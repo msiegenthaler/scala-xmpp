@@ -1,0 +1,11 @@
+(
+	:server-root "/Users/ms/scala/emacs/ensime/"
+	:server-cmd  "bin/server.sh"
+	:server-host "localhost"
+	:server-env ()
+
+	:project-package "ch.inventsoft.scalaxmpp"
+        :use-sbt t
+        :sbt-compile-conf "compile"
+        :sbt-runtime-conf "runtime"
+)
