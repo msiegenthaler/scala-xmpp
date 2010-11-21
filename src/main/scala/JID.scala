@@ -1,4 +1,5 @@
-package ch.inventsoft.scalaxmpp
+package ch.inventsoft
+package scalaxmpp
 
 
 /**
