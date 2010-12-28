@@ -178,7 +178,7 @@ trait XMPPComponentWrapper extends StateServer {
       case p @ OtherXMPPPacket(XMPPComponentHandshakeServer.xml) =>
         //ok, server accepted the secret
         ()
-      case error: StreamErrorPacket =>
+      case error: StreamError =>
         throw new StreamException(error.content)
       case other =>
         throw new XMPPException("Received unexpected handshake answer: "+other)
@@ -232,7 +232,7 @@ trait XMPPComponentWrapper extends StateServer {
   }
 }
 
-case class StreamException(reasons: Seq[Elem]) extends Exception(reasons.map(_.label).mkString(", "))
+case class StreamException(reasons: NodeSeq) extends Exception(reasons.map(_.label).mkString(", "))
 case class XMPPException(text: String) extends Exception(text)
 
 case class XMPPComponentHandshakeClient(secret: String, protected[this] val streamId: String, encoding: Charset)
