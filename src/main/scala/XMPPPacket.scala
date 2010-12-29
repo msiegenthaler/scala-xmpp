@@ -52,7 +52,7 @@ trait StanzaError extends Stanza {
 trait MessagePacket extends Stanza {
   def id: Option[String]
 }
-case class MessageSend(id: Option[String], messageType: String, from: JID, to: JID, content: NodeSeq) extends MessagePacket {
+case class MessageSend(id: Option[String]=None, messageType: String, from: JID, to: JID, content: NodeSeq) extends MessagePacket {
   override def stanzaType = messageType
   override def fromOption = Some(from)
   override def toOption = Some(to)
@@ -97,6 +97,10 @@ case class IQSet(id: String, from: JID, to: JID, content: NodeSeq) extends IQPac
   override val stanzaType = "set"
   override def xml = {
     <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
+  }
+  def resultOk(content: NodeSeq) = IQResult(id, to, from, content)
+  def resultError(error: Elem, includeRequest: Boolean=true) = {
+    IQError(id, to, from, error, if (includeRequest) content else NodeSeq.Empty)
   }
 }
 case class IQResult(id: String, from: JID, to: JID, content: NodeSeq) extends IQPacket {

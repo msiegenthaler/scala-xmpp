@@ -96,7 +96,6 @@ class XMPPComponentSpec extends ProcessSpec with ShouldMatchers with Log {
       override def openRawConnection = port
     }
     new XMPPComponentServerImpl {
-      override val host = "xmpp.inventsoft.ch"
       override val defaultSecret = None
       override val connectionFactory = cf
     }

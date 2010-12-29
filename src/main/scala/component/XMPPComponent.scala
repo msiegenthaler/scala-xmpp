@@ -78,9 +78,6 @@ trait XMPPComponentManager {
  * A (remote)  XMPP-Server.
  */
 trait XMPPComponentServer {
-  val host: String
-//  val port: Int TODO
-
   /**
    * Register a new XMPP-Component for the server.
    */
@@ -94,14 +91,8 @@ trait XMPPComponentServerImpl extends XMPPComponentServer with ConcurrentObject 
   protected[this] def connectionFactory: XMPPConnectionFactory
 
   /** Open a new connection to the xmpp-server */
-  protected[this] def openConnection: CommunicationPort[XMPPPacket,XMPPPacket] @process = {
-    connectionFactory.openConnection(clientRoot).receiveWithin(5 s)
-  }
-
-  protected[this] val clientRoot: Elem = {
-    <stream:stream xmlns="jabber:component:accept"
-                   xmlns:stream="http://etherx.jabber.org/streams"
-                   to={host}/>
+  protected[this] def openConnection(root: Elem): CommunicationPort[XMPPPacket,XMPPPacket] @process = {
+    connectionFactory.openConnection(root).receiveWithin(5 s)
   }
 
   override def register(specification: XMPPComponentSpecification) = concurrentWithReply {
@@ -109,9 +100,8 @@ trait XMPPComponentServerImpl extends XMPPComponentServer with ConcurrentObject 
 
     val wrapper = new XMPPComponentWrapper {
       override val componentSpec = specification
-      override val subdomain = specification.subdomain
       override val encoding = Charset.forName("UTF-8")
-      override def openConnection = XMPPComponentServerImpl.this.openConnection
+      override def openConnection(root: Elem) = XMPPComponentServerImpl.this.openConnection(root)
     }
     Spawner.start(wrapper, SpawnAsRequiredChild)
     wrapper.component.receive
@@ -120,11 +110,11 @@ trait XMPPComponentServerImpl extends XMPPComponentServer with ConcurrentObject 
 
 trait XMPPComponentWrapper extends StateServer {
   val componentSpec: XMPPComponentSpecification
-  val subdomain: String
+  def subdomain: String = componentSpec.subdomain
 
   protected[this] val encoding: Charset
   protected[this] val defaultSecret: Option[String] = None
-  protected[this] def openConnection: CommunicationPort[XMPPPacket,XMPPPacket] @process
+  protected[this] def openConnection(root: Elem): CommunicationPort[XMPPPacket,XMPPPacket] @process
 
   protected[this] val timeout = 30 s
 
@@ -133,16 +123,21 @@ trait XMPPComponentWrapper extends StateServer {
                                           connection: CommunicationPort[XMPPPacket,XMPPPacket],
                                           reader: Process)
   override def init = {
+    log.debug("Registering XMPP-Component for subdomain {}", subdomain)
     val (conn, stream) = initConnection
     val from = (stream \ "@from").text
-    val domain = subdomain+"."+from
+    log.info("Established Connection for XMPP-Component {} ({})", componentSpec.name, from)
+    val domain = from
     val component = initComponent(JID(domain))
     val reader = spawnChild(Required)(readFromServer(conn, component))
+    spawnChild(Required)(component.connected)
     WrapperState(component, conn, reader)
   }
   protected[this] def secret = componentSpec.secret.getOrElse(defaultSecret.getOrElse(""))
   protected[this] def initConnection = {
-    val conn = openConnection
+    val componentHost = componentSpec.subdomain
+    val root = <stream:stream xmlns="jabber:component:accept" xmlns:stream="http://etherx.jabber.org/streams" to={componentHost}/>
+    val conn = openConnection(root)
     val stream = receiveStreamBegin(conn)
     performHandshake(conn, stream)
     (conn, stream)
@@ -160,7 +155,7 @@ trait XMPPComponentWrapper extends StateServer {
         case other =>
           throw XMPPException("Unexpected element "+other.xml)
       }
-      case EndOfData => throw XMPPException("Server closed the connection")
+      case EndOfData => throw XMPPException("Server closed the connection, did not send a <stream>-tag")
     }
   }
   protected[this] def performHandshake(connection: CommunicationPort[XMPPPacket,XMPPPacket], stream: Elem) = {
@@ -170,11 +165,11 @@ trait XMPPComponentWrapper extends StateServer {
     val response = connection.readWithin(timeout, 1).
       getOrElse(throw new XMPPException("No answer received from server (handshake)"))
     val data = response match {
-      case Data(data) => data
+      case Data(data) => data.head
       case EndOfData =>
-        throw new XMPPException("server closed the connection")
+        throw new XMPPException("Server closed the connection during handshalke")
     }
-    data.head match {
+    data match {
       case p @ OtherXMPPPacket(XMPPComponentHandshakeServer.xml) =>
         //ok, server accepted the secret
         ()
@@ -183,13 +178,10 @@ trait XMPPComponentWrapper extends StateServer {
       case other =>
         throw new XMPPException("Received unexpected handshake answer: "+other)
     }
-    data.tail //TODO handle the tail!
   }
 
   protected[this] def initComponent(jid: JID) = {
-    val c = componentSpec.initializeComponent(jid, Manager).receiveWithin(30 s)
-    c.connected
-    c
+    componentSpec.initializeComponent(jid, Manager).receiveWithin(30 s)
   }
   protected[this] def readFromServer(source: Source[XMPPPacket], component: XMPPComponent): Unit @process = {
     val read = source.read()
