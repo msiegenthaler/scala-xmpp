@@ -23,9 +23,9 @@ class XMPPComponentSpec extends ProcessSpec with ShouldMatchers with Log {
       val cmp = s.register(spec)
 
       val openElem = XML.loadString(c.read()+"</stream:stream>")
-      openElem should be(<stream:stream xmlns:stream="http://etherx.jabber.org/streams"/>)
+      openElem should be(<stream:stream to="test" xmlns:stream="http://etherx.jabber.org/streams"/>)
       c.send("""<?xml version="1.0" encoding="UTF-8"?>
-<stream:stream id="1234" from="xmpp.inventsoft.ch" xmlns="jabber:component:accept" xmlns:stream="http://etherx.jabber.org/streams">""")
+<stream:stream id="1234" from="test.xmpp.inventsoft.ch" xmlns="jabber:component:accept" xmlns:stream="http://etherx.jabber.org/streams">""")
 
       val handshakeElem = XML.loadString(c.read())
       handshakeElem should be(<handshake xmlns="jabber:component:accept">c651141dcae96c2e1fc4edcd41b30a2b83f6be69</handshake>)
@@ -95,9 +95,16 @@ class XMPPComponentSpec extends ProcessSpec with ShouldMatchers with Log {
     val cf = new ByteCPXMPPConnectionFactory {
       override def openRawConnection = port
     }
-    new XMPPComponentServerImpl {
-      override val defaultSecret = None
+    val mgr = new BaseConnectionManager {
       override val connectionFactory = cf
+      override val defaultSecret = None
+    }
+    new XMPPComponentServer with ConcurrentObject {
+      override def register(componentSpec: XMPPComponentSpecification) = concurrentWithReply {
+        val wrapper = new ComponentWrapper(componentSpec, mgr, 10 minutes)
+        Spawner.start(wrapper, SpawnAsRequiredChild)
+        ()
+      }
     }
   }
 

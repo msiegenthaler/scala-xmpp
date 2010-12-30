@@ -10,17 +10,7 @@ import scala.xml._
 
 
 object EchoComponent extends Application with Log { spawnAndBlock {
-
-  
-  val server = new XMPPComponentServerImpl {
-    override val defaultSecret = None
-    override def connectionFactory = {
-      new SocketXMPPConnectionFactory {
-        override val host = "localhost"
-        override val port = 5275
-      }
-    }
-  }
+  val server = XMPPComponentServer.tcp("localhost", 5275, None)
   server.register(new EchoComponentSpecification)
   println("running")
 
@@ -70,7 +60,10 @@ class EchoComponent(spec: EchoComponentSpecification, id: JID, manager: XMPPComp
           m.content.find(_.label == "body").map(_.text) match {
             case Some(text) => 
               println("Echo "+text+" to "+m.from)
-              msgHans(m.from, "Hans says: "+text)
+              if (text == "Shutdown")
+                manager.unregister
+              else
+                msgHans(m.from, "Hans says: "+text)
             case None =>
               println("No text message "+m)
           }
@@ -131,7 +124,7 @@ class EchoComponent(spec: EchoComponentSpecification, id: JID, manager: XMPPComp
   }
   private[this] def send(packet: XMPPPacket): Unit @process = {
     println("Sending "+packet.getClass.getSimpleName)
-    if (manager.send(packet).option.receiveWithin(3 s).isEmpty) {
+    if (manager.send(packet).option.receiveWithin(20 s).isEmpty) {
       println("Failed to send "+packet.xml)
     }
     noop
