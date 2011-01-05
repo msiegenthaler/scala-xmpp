@@ -60,10 +60,13 @@ class EchoComponent(spec: EchoComponentSpecification, id: JID, manager: XMPPComp
           m.content.find(_.label == "body").map(_.text) match {
             case Some(text) => 
               println("Echo "+text+" to "+m.from)
-              if (text == "Shutdown")
-                manager.unregister
-              else
-                msgHans(m.from, "Hans says: "+text)
+              text match {
+                case "Shutdown" =>
+                  manager.unregister
+                case "Crash" => throw new RuntimeException("Requested crash")
+                case text =>
+                  msgHans(m.from, "Hans says: "+text)
+              }
             case None =>
               println("No text message "+m)
           }

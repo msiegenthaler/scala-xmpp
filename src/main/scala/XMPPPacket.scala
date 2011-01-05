@@ -11,6 +11,7 @@ sealed trait XMPPPacket {
 
 //TODO add xml:lang somewhen
 trait Stanza extends XMPPPacket {
+  def isError: Boolean
   def fromOption: Option[JID]
   def toOption: Option[JID]
   def idOption: Option[String]
@@ -19,7 +20,7 @@ trait Stanza extends XMPPPacket {
 }
 trait StanzaError extends Stanza {
   override val stanzaType = "error"
-
+  override def isError = true
   def errorElem: Elem
   def errorType: String = errorElem.attribute("type").map(_.toString).getOrElse("")
   def errorText: Option[String] = errorTextElem.map(_.text)
@@ -49,13 +50,40 @@ trait StanzaError extends Stanza {
   </stanza-kind>
   */
 }
-trait MessagePacket extends Stanza {
+object StanzaError {
+  val badRequest = <error type="modify"><bad-request xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val conflict = <error type="wait"><conflict xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val featureNotImplemented = <error type="cancel"><feature-not-implemented xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val forbidden = <error type="auth"><conflict xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val gone = <error type="modify"><gone xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val internalServerError = <error type="wait"><internal-server-error xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val itemNotFound = <error type="cancel"><item-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val jidMalformed = <error type="modify"><jid-malformed xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val notAcceptable = <error type="modify"><not-acceptable xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val notAllowed = <error type="cancel"><not-allowed xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val notAuthorized = <error type="auth"><not-authorized xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val paymentRequired = <error type="auth"><payment-required xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val recipientUnavailable = <error type="wait"><recipient-unavailable xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val redirect = <error type="modify"><redirect xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val registrationRequired = <error type="wait"><registration-required xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val remoteServerNotFound = <error type="cancel"><remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val remoteServerTimeout = <error type="wait"><remote-server-timeout xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val resourceConstraint = <error type="wait"><resource-constraint xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val serviceUnavailable = <error type="cancel"><service-unavailable xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val subscriptionRequired = <error type="auth"><subscription-required xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+  val unexpectedRequest = <error type="wait"><unexpected-request xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"/></error>
+}
+
+sealed trait MessagePacket extends Stanza {
   def id: Option[String]
+  def to: JID
+  override def toOption = Some(to)
+  def from: JID
+  override def fromOption = Some(from)
 }
 case class MessageSend(id: Option[String]=None, messageType: String, from: JID, to: JID, content: NodeSeq) extends MessagePacket {
+  override def isError = false
   override def stanzaType = messageType
-  override def fromOption = Some(from)
-  override def toOption = Some(to)
   override def idOption = id
   override def xml = {
     val m = <message type={messageType} from={from.stringRepresentation} to={to.stringRepresentation}>{content}</message>
@@ -65,7 +93,6 @@ case class MessageSend(id: Option[String]=None, messageType: String, from: JID, 
 case class MessageError(id: Option[String], from: JID, to: JID, errorElem: Elem, otherContent: NodeSeq = NodeSeq.Empty) extends MessagePacket with StanzaError {
   override def idOption = id
   override def toOption = Some(to)
-  override def fromOption = Some(from)
   override def content = {
     otherContent ++ errorElem
   }
@@ -75,7 +102,7 @@ case class MessageError(id: Option[String], from: JID, to: JID, errorElem: Elem,
   }
 }
 
-trait IQPacket extends Stanza {
+sealed trait IQPacket extends Stanza {
   def from: JID
   def to: JID
   def id: String
@@ -83,33 +110,37 @@ trait IQPacket extends Stanza {
   override def toOption = Some(to)
   override def idOption = Some(id)
 }
-case class IQGet(id: String, from: JID, to: JID, content: NodeSeq) extends IQPacket {
+sealed trait IQRequest extends IQPacket {
+  def resultOk(content: NodeSeq) = {
+    IQResult(id, to, from, content)
+  }
+  def resultError(error: Elem, includeRequest: Boolean=true) = {
+    IQError(id, to, from, error, if (includeRequest) content else NodeSeq.Empty)
+  }
+}
+case class IQGet(id: String, from: JID, to: JID, content: NodeSeq) extends IQRequest {
   override val stanzaType = "get"
+  override def isError = false
   override def xml = {
     <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
   }
-  def resultOk(content: NodeSeq) = IQResult(id, to, from, content)
-  def resultError(error: Elem, includeRequest: Boolean=true) = {
-    IQError(id, to, from, error, if (includeRequest) content else NodeSeq.Empty)
-  }
 }
-case class IQSet(id: String, from: JID, to: JID, content: NodeSeq) extends IQPacket {
+case class IQSet(id: String, from: JID, to: JID, content: NodeSeq) extends IQRequest {
   override val stanzaType = "set"
+  override def isError = false
   override def xml = {
     <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
   }
-  def resultOk(content: NodeSeq) = IQResult(id, to, from, content)
-  def resultError(error: Elem, includeRequest: Boolean=true) = {
-    IQError(id, to, from, error, if (includeRequest) content else NodeSeq.Empty)
-  }
 }
-case class IQResult(id: String, from: JID, to: JID, content: NodeSeq) extends IQPacket {
+sealed trait IQResponse extends IQPacket
+case class IQResult(id: String, from: JID, to: JID, content: NodeSeq) extends IQResponse {
   override val stanzaType = "result"
+  override def isError = false
   override def xml = {
     <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
   }
 }
-case class IQError(id: String, from: JID, to: JID, errorElem: Elem, otherContent: NodeSeq=NodeSeq.Empty) extends IQPacket with StanzaError {
+case class IQError(id: String, from: JID, to: JID, errorElem: Elem, otherContent: NodeSeq=NodeSeq.Empty) extends IQResponse with StanzaError {
   override val stanzaType = "error"
   override def content = otherContent ++ errorElem
   override def xml = {
@@ -124,6 +155,7 @@ trait PresencePacket extends Stanza {
 }
 case class Presence(from: JID, content: NodeSeq, presenceType: Option[String]=None, to: Option[JID]=None, id: Option[String]=None) extends PresencePacket {
   override val stanzaType = "presence"
+  override def isError = false
   override def fromOption = Some(from)
   override def toOption = to
   override def idOption = id
