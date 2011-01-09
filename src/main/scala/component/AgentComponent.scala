@@ -34,6 +34,8 @@ trait Agent {
   def shutdown: Unit @process
 }
 trait AgentCallback {
+  /** JID of the agent */
+  def jid: JID
   /**
    * Send a generic XMPPPacket without waiting for a response. The Selector waits for the
    * packet to be transmitted to the XMPP-Server
@@ -204,7 +206,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   }}
 
   protected[this] def handleMessage(packet: MessagePacket) = packet match {
-    case MessageSend(id, "chat", from, _, content) =>
+    case MessageSend(_, "chat", from, _, content) =>
       content.find(_.label == "body").map(_.text.toLowerCase) match {
         case Some("list") => asyncCast { state =>
           log.debug("Listing requested by {}", from)
@@ -264,7 +266,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   }
 
   protected[this] object SelfAgent extends AgentHandler {
-    override def jid = componentJID
+    override val jid = componentJID
     override val agent = new Agent {
       override val name = "self"
       override def handleMessage(packet: MessagePacket) = AgentComponent.this.handleMessage(packet)
@@ -315,7 +317,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   }
 }
 object AgentComponent {
-  def specification(name: String, description: String, subdomain: String, secret: Option[String]=None) = {
+  def specification(name: String, description: String, subdomain: String, secret: Option[String]=None)(init: AgentManager => Unit @process = agent => noop) = {
     val n = name; val d = description; val s = subdomain; val sc = secret;
     new XMPPComponentSpecification() with ConcurrentObject {
       override val name = n
@@ -330,6 +332,8 @@ object AgentComponent {
           override val componentJID = jid
         }
         Spawner.start(component, SpawnAsRequiredChild)
+        init(component)
+        component
       }
     }
   }
