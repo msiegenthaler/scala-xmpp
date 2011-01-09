@@ -12,9 +12,6 @@ import Messages._
 
 /** Participant of an agent component (JID i.e. agent@component) */
 trait Agent {
-  /** Name-part of the JID (name@domain/resource) */
-  val name: String
-
   def handleMessage(packet: MessagePacket): Unit @process
   def handleIQ(packet: IQRequest): Selector[IQResponse] @process
   def handlePresence(packet: PresencePacket): Unit @process
@@ -35,9 +32,9 @@ trait Agent {
 }
 trait AgentCallback {
   /** JID of the agent */
-  def jid: JID
+  val jid: JID
   /** JID of the responsible server (roster etc.) */
-  def serverJid: JID
+  val serverJid: JID
 
   /**
    * Send a generic XMPPPacket without waiting for a response. The Selector waits for the
@@ -68,7 +65,11 @@ trait AgentCallback {
 
 
 trait AgentManager {
-  def register(agent: AgentCallback => Agent @process): Unit @process
+  /**
+   * Adds a new agent.
+   * @name Name-part of the JID (name@domain)
+   */
+  def register(name: String, agent: AgentCallback => Agent @process): Unit @process
 }
 
 private[component] trait IQRegister {
@@ -146,8 +147,8 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
       Some(state.copy(iqRegister=niqr))
   }
 
-  def register(creator: AgentCallback => Agent @process) = cast { state =>
-    val handler = AgentHandler(creator)
+  def register(name: String, creator: AgentCallback => Agent @process) = cast { state =>
+    val handler = AgentHandler(name, creator)
     if (state.connected) spawnChild(Required) { handler.agent.connected }
     state.copy(agents=state.agents + (handler.jid -> handler))
   }
@@ -293,7 +294,6 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     override val serverJid = serverJID
     override val iqId = "unused"
     override val agent = new Agent {
-      override val name = "self"
       override def handleMessage(packet: MessagePacket) = AgentComponent.this.handleMessage(packet)
       override def handleIQ(packet: IQRequest) = AgentComponent.this.handleIQ(packet)
       override def handlePresence(packet: PresencePacket) = AgentComponent.this.handlePresence(packet)
@@ -310,7 +310,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
 
   protected[this] trait AgentHandler extends AgentCallback {
     def agent: Agent
-    override def serverJid = serverJID
+    override val serverJid = serverJID
     override def send(packet: XMPPPacket) = manager.send(packet)
     override def request(packet: IQRequest) = {
       val key = IQKey(packet)
@@ -330,13 +330,12 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     def shutdown = agent.shutdown
   }
   protected[this] object AgentHandler {
-    def apply(creator: AgentCallback => Agent @process): AgentHandler @process = {
+    def apply(name: String, creator: AgentCallback => Agent @process): AgentHandler @process = {
       new AgentHandler {
         var agent: Agent = null
-        var jid: JID = null
+        val jid: JID = JID(name, componentJID.domain)
         def create = {
           agent = creator(this)
-          jid = JID(agent.name, componentJID.domain)
           this
         }
       }.create

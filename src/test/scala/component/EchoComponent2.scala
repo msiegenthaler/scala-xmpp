@@ -38,7 +38,8 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
     }
   }
 
-  class EchoAgent(val name: String, callback: AgentCallback) extends Agent with ConcurrentObject {
+  class EchoAgent(callback: AgentCallback) extends Agent with ConcurrentObject {
+    val name = callback.jid.node.getOrElse("")
     val subscribers = new JIDStore { override val prefix = name }
     protected[this] type State = Unit
     override def handleMessage(packet: MessagePacket) = concurrent { packet match {
@@ -123,7 +124,7 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
   }
 
   val spec = AgentComponent.specification("Echo", "Echos everything said the members", "echo2", Some("secret")) { am =>
-    am.register(new EchoAgent("hans", _))
+    am.register("hans", new EchoAgent(_))
   }
   server.register(spec)
 }}
