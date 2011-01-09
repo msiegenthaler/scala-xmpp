@@ -117,20 +117,17 @@ sealed trait IQRequest extends IQPacket {
   def resultError(error: Elem, includeRequest: Boolean=true) = {
     IQError(id, to, from, error, if (includeRequest) content else NodeSeq.Empty)
   }
+  override def xml = {
+    <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
+  }
 }
 case class IQGet(id: String, from: JID, to: JID, content: NodeSeq) extends IQRequest {
   override val stanzaType = "get"
   override def isError = false
-  override def xml = {
-    <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
-  }
 }
 case class IQSet(id: String, from: JID, to: JID, content: NodeSeq) extends IQRequest {
   override val stanzaType = "set"
   override def isError = false
-  override def xml = {
-    <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
-  }
 }
 sealed trait IQResponse extends IQPacket
 case class IQResult(id: String, from: JID, to: JID, content: NodeSeq) extends IQResponse {
@@ -197,8 +194,8 @@ object OtherXMPPPacket {
 object XMPPPacket {
   def apply(elem: Elem): XMPPPacket = elem match {
     case <iq>{content @ _*}</iq> =>
-      val to = parseJid(elem \ "@to")
       val from = parseJid(elem \ "@from")
+      val to = parseJid(elem \ "@to")
       val id = (elem \ "@id").toString
       (elem \ "@type").toString match {
         case "get" =>

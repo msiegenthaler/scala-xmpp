@@ -36,15 +36,30 @@ trait Agent {
 trait AgentCallback {
   /** JID of the agent */
   def jid: JID
+  /** JID of the responsible server (roster etc.) */
+  def serverJid: JID
+
   /**
    * Send a generic XMPPPacket without waiting for a response. The Selector waits for the
    * packet to be transmitted to the XMPP-Server
    */
   def send(packet: XMPPPacket): Completion @process
+
   /**
-   * Send an IQ-Request (get/set) and return a selector for the response.
+   * Send an IQ-request (get/set) and return the selector for the response.
    */
   def request(packet: IQRequest): Selector[IQResponse] @process
+  /** Generate a new, unique id for an IQ-request. */
+  def iqId: String
+  /** Send an IQGet and return the selector for the response. to=None => server */
+  def iqGet(to: Option[JID]=None, content: NodeSeq): Selector[IQResponse] @process = {
+    request(IQGet(iqId, jid, to.getOrElse(serverJid), content))
+  }
+  /** Send an IQSet and return the selector for the response. to=None => server */
+  def iqSet(to: Option[JID]=None, content: NodeSeq): Selector[IQResponse] @process = {
+    request(IQSet(iqId, jid, to.getOrElse(serverJid), content))
+  }
+
   /**
    * Unregister the Agent from the AgentManager. Shutdown will be called.
    */
@@ -84,18 +99,24 @@ private[component] class BidiMapIQRegister private(forward: Map[IQKey,Process], 
       Some((process, n))
     case None => None
   }
+  override def toString = forward.toString
 }
 private[component] object BidiMapIQRegister {
   def apply() = new BidiMapIQRegister(Map(),Map())
 }
 
-private[component] class IQKey private(jid: JID, id: String) {
+private[component] class IQKey private(val jid: JID, val id: String) {
   def matches(packet: IQPacket) = packet match {
     case r: IQResponse =>
       packet.id==id && packet.from==jid
     case r: IQRequest =>
-      packet.id==id && packet.to==jid
+      packet.id==id && packet.toOption==Some(jid)
   }
+  override def equals(o: Any) = o match {
+    case other: IQKey => jid==other.jid && id==other.id
+  }
+  override def hashCode = jid.hashCode ^ id.hashCode
+  override def toString = jid.toString + ":" + id
 }
 object IQKey {
   def apply(packet: IQPacket) = packet match {
@@ -110,6 +131,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   protected[this] override type State = AgentState
 
   protected[this] val componentJID: JID
+  protected[this] val serverJID: JID
   protected[this] val manager: XMPPComponentManager
 
   protected[this] override def init = {
@@ -160,10 +182,10 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
       state.agents.get(m.to) match {
         case Some(agent) =>
           val response = agent.agent.handleIQ(m).receiveOption(iqTimeout)
-          response match {
-            case Some(response) => manager.send(response)
-            case None => manager.send(m.resultError(StanzaError.remoteServerTimeout))
-          }
+        response match {
+          case Some(response) => manager.send(response)
+          case None => manager.send(m.resultError(StanzaError.remoteServerTimeout))
+        }
         case None =>
           m.resultError(StanzaError.itemNotFound).copy(from=componentJID)
       }
@@ -175,6 +197,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
           state.copy(iqRegister=niqr)
         case None =>
           //ignore response to unknown request
+          log.debug("Response to unknown IQ-request: {}. Will be ignored", key)
           state
       }
 
@@ -267,6 +290,8 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
 
   protected[this] object SelfAgent extends AgentHandler {
     override val jid = componentJID
+    override val serverJid = serverJID
+    override val iqId = "unused"
     override val agent = new Agent {
       override val name = "self"
       override def handleMessage(packet: MessagePacket) = AgentComponent.this.handleMessage(packet)
@@ -285,7 +310,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
 
   protected[this] trait AgentHandler extends AgentCallback {
     def agent: Agent
-    def jid: JID
+    override def serverJid = serverJID
     override def send(packet: XMPPPacket) = manager.send(packet)
     override def request(packet: IQRequest) = {
       val key = IQKey(packet)
@@ -299,6 +324,8 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
         override def apply(msg: Any) = msg.asInstanceOf[IQResponse]
       }
     }
+    private[this] val idDealer = new java.util.concurrent.atomic.AtomicLong
+    override def iqId = idDealer.incrementAndGet.toString
     override def unregister = AgentComponent.this.unregister(jid)
     def shutdown = agent.shutdown
   }
@@ -324,12 +351,13 @@ object AgentComponent {
       override val description = d
       override val subdomain = s
       override val secret = sc
-      override def initializeComponent(jid: JID, mgr: XMPPComponentManager) = replyInCallerProcess {
+      override def initializeComponent(jid: JID, serverJid: JID, mgr: XMPPComponentManager) = replyInCallerProcess {
         val spec = this
         val component = new AgentComponent {
           override val manager = mgr
           override val specification = spec
           override val componentJID = jid
+          override val serverJID = serverJid
         }
         Spawner.start(component, SpawnAsRequiredChild)
         init(component)

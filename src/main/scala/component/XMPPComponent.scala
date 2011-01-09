@@ -25,6 +25,7 @@ trait XMPPComponentSpecification {
   /** Create the XMPPComponent for this specification. Is called by XMPPComponentServer#add. */
   protected[component] def initializeComponent(
     jid: JID,
+    serverJid: JID,
     manager: XMPPComponentManager): Selector[XMPPComponent] @process
 }
 
@@ -282,7 +283,7 @@ protected[component] class ComponentWrapper(
       log.info("Initializing XMPPComponent {}...", connection.from)
       val timeout = 5 minutes;
       ResourceManager[XMPPComponent](
-        resource=spec.initializeComponent(connection.from, Manager).receiveWithin(timeout),
+        resource=spec.initializeComponent(connection.from, serverJid(connection), Manager).receiveWithin(timeout),
         close=_.shutdown).receiveWithin(timeout + (2 s)).resource
     }
     log.debug("The XMPPComponent is connecting")
@@ -313,10 +314,14 @@ protected[component] class ComponentWrapper(
               val read = connection.port.read()
               read match {
                 case Data(data) =>
-                  data.foreach_cps { d =>
-                    log.trace("XMPPComponent receives {}", data)
-                    component.process(d)
-                  }
+                  data.foreach_cps { _ match {
+                    case r: IQResult if r.id.startsWith("ping-") =>
+                      log.trace("Response to ping received")
+                      noop
+                    case d =>
+                      log.trace("XMPPComponent receives {}", data)
+                      component.process(d)
+                  }}
                   run
                 case EndOfData =>
                   cast { state =>
@@ -339,15 +344,7 @@ protected[component] class ComponentWrapper(
     case Some(connection) => 
       spawnChild(NotMonitored) {
         val jid = connection.from
-        val serverJid = {
-          val domain = jid.domain
-          val server = {
-            if (domain.startsWith(spec.subdomain+".")) domain.drop(spec.subdomain.length+1)
-            else domain
-          }
-          JID(server)
-        }
-        val ping = IQGet(uniqueId, jid, serverJid, <ping xmlns="urn:xmpp:ping"/>)
+        val ping = IQGet("ping-"+uniqueId, jid, serverJid(connection), <ping xmlns="urn:xmpp:ping"/>)
         connection.port.writeCast(ping)
       }
       state
@@ -355,6 +352,15 @@ protected[component] class ComponentWrapper(
       //no keep-alive if not connected
       state
   }}
+  private[this] def serverJid(connection: Connection) = {
+    val jid = connection.from
+    val domain = jid.domain
+    val server = {
+      if (domain.startsWith(spec.subdomain+".")) domain.drop(spec.subdomain.length+1)
+      else domain
+    }
+    JID(server)
+  }
   protected[this] def uniqueId = java.util.UUID.randomUUID.toString
 
   def component = get(_.component)

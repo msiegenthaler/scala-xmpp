@@ -55,8 +55,9 @@ class XMPPComponentSpec extends ProcessSpec with ShouldMatchers with Log {
         override val description = "Just a test component"
         override val subdomain = "test"
         override val secret = Some("very-secret")
-        override def initializeComponent(jid: JID, manager: XMPPComponentManager) = call { s =>
+        override def initializeComponent(jid: JID, serverJid: JID, manager: XMPPComponentManager) = call { s =>
           jid should be(JID("test.xmpp.inventsoft.ch"))
+          serverJid should be(JID("xmpp.inventsoft.ch"))                                                                                                          
           manager should not be(null)
           s.connected should be(false)
           s.manager should be(None)

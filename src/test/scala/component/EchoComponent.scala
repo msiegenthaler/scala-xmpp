@@ -36,7 +36,7 @@ class EchoComponentSpecification extends XMPPComponentSpecification with Concurr
   override val subdomain = "echo"
   override val secret = Some("secret")
 
-  override def initializeComponent(jid: JID, manager: XMPPComponentManager) = concurrentWithReply {
+  override def initializeComponent(jid: JID, serverJid: JID, manager: XMPPComponentManager) = concurrentWithReply {
     new EchoComponent(this, jid, manager)
   }
 }
