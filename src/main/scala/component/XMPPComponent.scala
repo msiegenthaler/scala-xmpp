@@ -207,10 +207,11 @@ protected[component] class ComponentWrapper(
     component: Option[XMPPComponent],
     connector: Option[Process],
     reader: Option[Process],
+    keepalive: Process,
     connection: Option[Connection])
 
   protected[this] override def init = {
-    spawnChild(Required) {
+    val keepalive = spawnChild(Required) {
       //keep-alive
       def run: Unit @process = receiveWithin(keepAliveInterval) {
         case Terminate => ()
@@ -219,7 +220,7 @@ protected[component] class ComponentWrapper(
       run
     }
     openConnection
-    ComponentWrapperState(None, None, None, None)
+    ComponentWrapperState(None, None, None, keepalive, None)
   }
   protected[this] override def handler(state: State) = {
     type HFun = PartialFunction[Any,Option[State] @process]
@@ -260,6 +261,7 @@ protected[component] class ComponentWrapper(
     connectorWatcher(super.handler(state))
   }
   protected[this] override def termination(state: State) = {
+    state.keepalive ! Terminate
     state.reader.foreach_cps(_ ! Terminate)
     state.connector.foreach_cps(_ ! Terminate)
   }
