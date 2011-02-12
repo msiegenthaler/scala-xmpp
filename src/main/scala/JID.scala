@@ -48,6 +48,14 @@ trait JID extends Ordered[JID] {
 }
 
 object JID {
+  def parseOption(stringRepresentation: String) = {
+    try {
+      val jid = parse(stringRepresentation)
+      Some(jid)
+    } catch {
+      case e: Exception => None
+    }
+  }
   def parse(stringRepresentation: String): JID = {
     val internal = new org.xmpp.packet.JID(stringRepresentation)
     new OrgXmppWrapper(internal)

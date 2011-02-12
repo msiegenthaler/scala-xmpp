@@ -12,28 +12,35 @@ import Messages._
 
 /** Participant of an agent component (JID i.e. agent@component) */
 trait Agent {
-  def handleMessage(packet: MessagePacket): Unit @process
-  def handleIQ(packet: IQRequest): Selector[IQResponse] @process
-  def handlePresence(packet: PresencePacket): Unit @process
+  def handleIQ(packet: IQRequest): Selector[IQResponse] @process = {
+    val r = RequestToken[IQResponse]
+    r.reply(packet.resultError(StanzaError.badRequest))
+    r.select
+  }
+  def handleMessage(packet: MessagePacket): Unit @process = noop
+  def handlePresence(packet: PresencePacket): Unit @process = noop
+  def handleOther(packet: XMPPPacket): Unit @process = noop
 
   /**
    * The connection to the server has been (re-)established, all methods offered by the
    * callback can now be used.
    * The component will not receive packets (#handle*) until this method completes.
    */
-  def connected: Unit @process
+  def connected: Unit @process = noop
   /**
    * The connection to the server has been lost.
    * The manager will try to reestablish the connection and call connected if that succeeds
    */
-  def connectionLost: Unit @process
+  def connectionLost: Unit @process = noop
   /** Terminate the agent and release all resources. */
-  def shutdown: Unit @process
+  def shutdown: Unit @process = noop
 }
-trait AgentCallback {
+
+/** Functions available to an agent */
+trait AgentServices {
   /** JID of the agent */
   val jid: JID
-  /** JID of the responsible server (roster etc.) */
+  /** JID of the responsible server */
   val serverJid: JID
 
   /**
@@ -69,7 +76,10 @@ trait AgentManager {
    * Adds a new agent.
    * @name Name-part of the JID (name@domain)
    */
-  def register(name: String, agent: AgentCallback => Agent @process): Unit @process
+  def register(name: String, agent: AgentServices => Agent @process): Unit @process
+
+  /** View of all currently registered agents */
+  def registeredComponents: Selector[Map[JID,Agent]] @process
 }
 
 private[component] trait IQRegister {
@@ -136,7 +146,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   protected[this] val manager: XMPPComponentManager
 
   protected[this] override def init = {
-    AgentState(Map() + (SelfAgent.jid -> SelfAgent), BidiMapIQRegister(), false)
+    AgentState(Map(), BidiMapIQRegister(), false)
   }
   protected[this] override def handler(state: State) = super.handler(state).orElse_cps {
     case ProcessCrash(process, _) =>
@@ -147,8 +157,13 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
       Some(state.copy(iqRegister=niqr))
   }
 
-  def register(name: String, creator: AgentCallback => Agent @process) = cast { state =>
+  override def register(name: String, creator: AgentServices => Agent @process) = cast { state =>
     val handler = AgentHandler(name, creator)
+    // unregister and shutdown the previous handler
+    state.agents.get(handler.jid).foreach_cps { agent =>
+      spawnChild(Required)(agent.shutdown)
+    }
+    // initialize the new handler
     if (state.connected) spawnChild(Required) { handler.agent.connected }
     state.copy(agents=state.agents + (handler.jid -> handler))
   }
@@ -158,6 +173,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     }
     state.copy(agents=state.agents - jid)
   }
+  override def registeredComponents = get(_.agents.mapValues(_.agent))
 
   override def connected = cast { state =>
     foreachAgent(state, _.connected)
@@ -183,10 +199,10 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
       state.agents.get(m.to) match {
         case Some(agent) =>
           val response = agent.agent.handleIQ(m).receiveOption(iqTimeout)
-        response match {
-          case Some(response) => manager.send(response)
-          case None => manager.send(m.resultError(StanzaError.remoteServerTimeout))
-        }
+          response match {
+            case Some(response) => manager.send(response)
+            case None => manager.send(m.resultError(StanzaError.remoteServerTimeout))
+          }
         case None =>
           m.resultError(StanzaError.itemNotFound).copy(from=componentJID)
       }
@@ -226,89 +242,20 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
       }
 
     case m: XMPPPacket =>
-      //Ignore other packets
-  }}
-
-  protected[this] def handleMessage(packet: MessagePacket) = packet match {
-    case MessageSend(_, "chat", from, _, content) =>
-      content.find(_.label == "body").map(_.text.toLowerCase) match {
-        case Some("list") => asyncCast { state =>
-          log.debug("Listing requested by {}", from)
-          val msg = state.agents.map(_._1).filter(_ != componentJID).map(_.stringRepresentation).mkString("<br/>")
-          sendChatMessage(from, msg)
-        }
-        case Some(text) =>
-          log.debug("Message '{}' received from {}", text, from)
-          sendChatMessage(from, "I don't understand '"+text+"'\nKnown commands:\n list")
-        case None => //don't react to messages without a body
-      }
-    case other => //don't react to all other messages
-  }
-  protected[this] def sendChatMessage(to: JID, body: String) = {
-    val c = <subject>Answer</subject><body>{body}</body>;
-    manager.send(MessageSend(
-      id=None,
-      messageType="chat",
-      from=componentJID,
-      to=to,
-      content=c
-    ))
-    ()
-  }
-
-  protected[this] def handleIQ(packet: IQRequest) = async { state => 
-    val response = packet match {
-      case get @ IQGet(_, from, _, content) => content.headOption match {
-        case Some(e @ <query/>) if e.namespace=="http://jabber.org/protocol/disco#info" =>
-          log.debug("Discovery request from {}", from)
-          get.resultOk {
-            <query xmlns="http://jabber.org/protocol/disco#items">
-            {state.agents.map(_._1).map { agent =>
-              <item jid="{agent.stringRepresentation}"/>
-            }}
-            </query>
-          }
-        case Some(other) =>
-          log.debug("Unsupported IQ-Get from {} received: {}:{}", from, other.label, other.namespace)
-          get.resultError(StanzaError.badRequest)
+      //see if the packet has a parsable to attribute
+      m.xml.attribute("to").map(_.toString).flatMap(JID.parseOption _).flatMap(state.agents.get _) match {
+        case Some(agent) =>
+          agent.agent.handleOther(m)
         case None =>
-          log.debug("Malformed IQ-Get from {} received (no content)", from)
-          get.resultError(StanzaError.badRequest)
+          //ignore
       }
-      case set @ IQSet(_, from, _, _) =>
-        log.debug("Received IQ-Set from {}", from)
-        set.resultError(StanzaError.badRequest)
-    }
-    response
-  }
-
-  protected[this] def handlePresence(packet: PresencePacket) = packet match {
-    case Presence(from, content, pt, to, id) =>
-      //ignore presence messages
-    case PresenceError(from, error, id, to, content) =>
-      //ignore presence errors
-  }
-
-  protected[this] object SelfAgent extends AgentHandler {
-    override val jid = componentJID
-    override val serverJid = serverJID
-    override val iqId = "unused"
-    override val agent = new Agent {
-      override def handleMessage(packet: MessagePacket) = AgentComponent.this.handleMessage(packet)
-      override def handleIQ(packet: IQRequest) = AgentComponent.this.handleIQ(packet)
-      override def handlePresence(packet: PresencePacket) = AgentComponent.this.handlePresence(packet)
-      override def connected = log.debug("Connected to XMPPServer")
-      override def connectionLost = log.debug("Connection to XMPPServer lost")
-      override def shutdown = noop
-    }
-    override def unregister = ()
-  }
+  }}
 
   protected[this] def registerIQ(key: IQKey, process: Process) = cast { state =>
     state.copy(iqRegister=state.iqRegister.register(key, process))
   }
 
-  protected[this] trait AgentHandler extends AgentCallback {
+  protected[this] trait AgentHandler extends AgentServices {
     def agent: Agent
     override val serverJid = serverJID
     override def send(packet: XMPPPacket) = manager.send(packet)
@@ -330,7 +277,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     def shutdown = agent.shutdown
   }
   protected[this] object AgentHandler {
-    def apply(name: String, creator: AgentCallback => Agent @process): AgentHandler @process = {
+    def apply(name: String, creator: AgentServices => Agent @process): AgentHandler @process = {
       new AgentHandler {
         var agent: Agent = null
         val jid: JID = JID(name, componentJID.domain)

@@ -8,7 +8,7 @@ import scalabase.oip._
 import scalabase.time._
 import scalabase.log._
 
-
+/*
 object EchoComponent2 extends Application with Log { spawnAndBlock {
   val server = XMPPComponentServer.tcp("localhost", 5275, None)
 
@@ -128,3 +128,4 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
   }
   server.register(spec)
 }}
+*/
