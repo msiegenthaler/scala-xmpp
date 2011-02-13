@@ -145,8 +145,19 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   protected[this] val serverJID: JID
   protected[this] val manager: XMPPComponentManager
 
+  protected[this] def createDomainAgent(services: AgentServices): Agent = {
+    new ComponentDiscoveryAgent {
+      override val manager = AgentComponent.this
+    }
+  }
+  protected[this] object DomainHandler extends AgentHandler {
+    val jid = componentJID
+    val agent = createDomainAgent(this)
+  }
+
+
   protected[this] override def init = {
-    AgentState(Map(), BidiMapIQRegister(), false)
+    AgentState(Map() + (DomainHandler.jid -> DomainHandler), BidiMapIQRegister(), false)
   }
   protected[this] override def handler(state: State) = super.handler(state).orElse_cps {
     case ProcessCrash(process, _) =>

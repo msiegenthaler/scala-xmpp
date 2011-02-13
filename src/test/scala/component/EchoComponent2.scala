@@ -8,9 +8,10 @@ import scalabase.oip._
 import scalabase.time._
 import scalabase.log._
 
-/*
 object EchoComponent2 extends Application with Log { spawnAndBlock {
   val server = XMPPComponentServer.tcp("localhost", 5275, None)
+
+
 
   val store = java.util.prefs.Preferences.userRoot
   trait JIDStore {
@@ -38,8 +39,12 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
     }
   }
 
-  class EchoAgent(callback: AgentCallback) extends Agent with ConcurrentObject {
-    val name = callback.jid.node.getOrElse("")
+
+
+
+  //TODO use the new tools to make the implementation easier
+  class EchoAgent(services: AgentServices) extends Agent with ConcurrentObject {
+    val name = services.jid.node.getOrElse("")
     val subscribers = new JIDStore { override val prefix = name }
     protected[this] type State = Unit
     override def handleMessage(packet: MessagePacket) = concurrent { packet match {
@@ -47,15 +52,15 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
         content.find(_.label == "body").map(_.text).foreach_cps { text =>
           println("Echo "+name+" got message "+text)
           text match {
-            case "stop" => callback.unregister
+            case "stop" => services.unregister
             case "offline" => announceOffline()
             case "online" => announce()
             case text =>
               val c = <subject>Echo</subject><body>{name} says {text}</body>;
-              callback.send(MessageSend(
+              services.send(MessageSend(
                 id=None,
                 messageType="chat",
-                from=callback.jid,
+                from=services.jid,
                 to=from,
                 content=c))
           }
@@ -103,20 +108,20 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
     }
     protected[this] def announce(to: Option[JID], kind: Option[String], status: NodeSeq): Unit @process = to match {
       case Some(_) =>
-        callback.send(Presence(from=callback.jid, to=to, content=status, presenceType=kind)).receiveOption(1 s)
+        services.send(Presence(from=services.jid, to=to, content=status, presenceType=kind)).receiveOption(1 s)
         ()
       case None =>
         console("Announcing presence to all subscribers")
         val selectors = subscribers.get.map_cps { to =>
           console(" informs "+to)
-          callback.send(Presence(from=callback.jid, to=Some(to), content=status, presenceType=kind))
+          services.send(Presence(from=services.jid, to=Some(to), content=status, presenceType=kind))
         }
         selectors.foreach_cps(_.receiveOption(1 s))
     }
     protected[this] def addSubscription(jid: JID) = {
-      callback.send(Presence(callback.jid, NodeSeq.Empty, Some("subscribed"), Some(jid))).receive
+      services.send(Presence(services.jid, NodeSeq.Empty, Some("subscribed"), Some(jid))).receive
       subscribers.add(jid)
-      callback.send(Presence(callback.jid, NodeSeq.Empty, Some("subscribe"), Some(jid))).receive
+      services.send(Presence(services.jid, NodeSeq.Empty, Some("subscribe"), Some(jid))).receive
     }
     protected[this] def removeSubscription(jid: JID) = {
       subscribers.remove(jid)
@@ -125,7 +130,11 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
 
   val spec = AgentComponent.specification("Echo", "Echos everything said the members", "echo2", Some("secret")) { am =>
     am.register("hans", new EchoAgent(_))
+    //TODO Presence for InfoAgent
+    am.register("about", s => new ComponentInfoAgent {
+      override val services = s
+      override val manager = am
+    })
   }
   server.register(spec)
 }}
-*/

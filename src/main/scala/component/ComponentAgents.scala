@@ -21,7 +21,7 @@ trait ComponentDiscoveryAgent extends StatelessAgent with Log {
   }
 
   def discovery = mkIqGet {
-    case get @ FirstElem(e @ ElemName("query", "http://jabber.org/protocol/disco#info")) =>
+    case get @ FirstElem(ElemName("query", "http://jabber.org/protocol/disco#info")) =>
       log.debug("Discovery request from {}", get.from)
       val agents = manager.registeredComponents.receiveOption(5 s).getOrElse(Map());
       noop
@@ -44,24 +44,25 @@ trait ComponentDiscoveryAgent extends StatelessAgent with Log {
  */
 trait ComponentInfoAgent extends StatelessAgent with Log {
   protected[this] val manager: AgentManager
-  protected[this] val callback: AgentServices
+  protected[this] val services: AgentServices
 
   protected override def message = super.message :+ commands
 
   def commands = mkMsg {
-    case Chat(subject, Command("list"), from) =>
+    case _ => noop
+/*    case Chat(subject, Command("list"), from) =>
       log.debug("Agent-listing requested by {}", from)
       val cs = manager.registeredComponents.receiveOption(5 s).getOrElse(Map())
       val parts = cs.map(c => Text(c._1.stringRepresentation))
       val body = parts.foldLeft(NodeSeq.Empty) { (l,c) =>
         l ++ c ++ <br/> //newline seperate the components
       }.drop(1)
-      callback.send(Chat(subject, body, from, callback.jid))
+      services.send(Chat(subject, body, from, services.jid))
 
     case Chat(subject, Command("status"), from) =>
       log.debug("Status requested by {}", from)
-      val body = "Agent "+callback.jid+" for component "+callback.jid.domain+" (connected to "+callback.serverJid+")"
-      callback.send(Chat(subject, Text(body), from, callback.jid))
+      val body = "Agent "+services.jid+" for component "+services.jid.domain+" (connected to "+services.serverJid+")"
+      services.send(Chat(subject, Text(body), from, services.jid))
 
     case Chat(subject, Command("help"), from) =>
       val body = <b>Available Commands</b>
@@ -69,7 +70,7 @@ trait ComponentInfoAgent extends StatelessAgent with Log {
           <li>list: Lists all registered agents</li>
           <li>status: Status of the component</li>
         </ul>;
-      callback.send(Chat(subject, body, from, callback.jid))
+      services.send(Chat(subject, body, from, services.jid))*/
   }
 
   protected object Command {
