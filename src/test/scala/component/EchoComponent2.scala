@@ -126,6 +126,7 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
 
   val spec = AgentComponent.specification("Echo", "Echos everything said the members", "echo2", Some("secret")) { am =>
     am.register("hans",  s => Spawner.start(new EchoAgent(s), SpawnAsRequiredChild))
+    am.register("peter",  s => Spawner.start(new EchoAgent(s), SpawnAsRequiredChild))
     am.register("about", s => Spawner.start(new AboutAgent(s, am), SpawnAsRequiredChild))
   }
   server.register(spec)
