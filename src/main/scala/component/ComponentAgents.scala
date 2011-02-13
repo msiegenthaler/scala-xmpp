@@ -49,33 +49,29 @@ trait ComponentInfoAgent extends StatelessAgent with Log {
   protected override def message = super.message :+ commands
 
   def commands = mkMsg {
-    case _ => noop
-/*    case Chat(subject, Command("list"), from) =>
+    case Chat(_, thread, Command("list"), from) =>
       log.debug("Agent-listing requested by {}", from)
       val cs = manager.registeredComponents.receiveOption(5 s).getOrElse(Map())
       val parts = cs.map(c => Text(c._1.stringRepresentation))
-      val body = parts.foldLeft(NodeSeq.Empty) { (l,c) =>
-        l ++ c ++ <br/> //newline seperate the components
-      }.drop(1)
-      services.send(Chat(subject, body, from, services.jid))
+      val body = parts.mkString("\n")
+      services.send(Chat(None, thread, body, from, services.jid))
 
-    case Chat(subject, Command("status"), from) =>
+    case Chat(_, thread, Command("status"), from) =>
       log.debug("Status requested by {}", from)
       val body = "Agent "+services.jid+" for component "+services.jid.domain+" (connected to "+services.serverJid+")"
-      services.send(Chat(subject, Text(body), from, services.jid))
+      services.send(Chat(None, thread, body, from, services.jid))
 
-    case Chat(subject, Command("help"), from) =>
-      val body = <b>Available Commands</b>
-        <ul>
-          <li>list: Lists all registered agents</li>
-          <li>status: Status of the component</li>
-        </ul>;
-      services.send(Chat(subject, body, from, services.jid))*/
+    case Chat(_, thread, Command("help"), from) =>
+      val commands = ("list", "Lists all registered agents") ::
+                     ("status", "Status of the component") ::
+                     ("help", "Shows this output") :: Nil
+      val body = "Available Commands:\n"+commands.map(c => " "+c._1+": "+c._2).mkString("\n")
+      services.send(Chat(None, thread, body, from, services.jid))
   }
 
   protected object Command {
-    def unapply(body: NodeSeq) = {
-      Some(body.text.takeWhile(_ != ' ').toLowerCase)
+    def unapply(body: String) = {
+      Some(body.takeWhile(_ != ' ').toLowerCase)
     }
   }
 }

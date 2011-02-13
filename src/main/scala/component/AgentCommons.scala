@@ -51,6 +51,12 @@ trait StatelessAgent extends Agent with ConcurrentObject {
   protected def presence: Seq[Handler[PresencePacket,Any]] = Nil
   protected def other: Seq[Handler[XMPPPacket,Any]] = Nil
 
+  private[component] final def stateless_iqGet = iqGet
+  private[component] final def stateless_iqSet = iqSet
+  private[component] final def stateless_message = message
+  private[component] final def stateless_presence = presence
+  private[component] final def stateless_other = other
+
   protected def mkIqGet(fun: Handler[IQGet,IQResponse]) = fun
   protected def mkIqSet(fun: Handler[IQGet,IQResponse]) = fun
   protected def mkMsg(fun: Handler[MessagePacket,_]) = fun
@@ -96,12 +102,30 @@ trait StatefulAgent extends Agent with StateServer {
     handler.find(_.isDefinedAt(v)).map_cps(_.apply(v))
   }
 
+  protected[this] val stateless: StatelessAgent = new StatelessAgent{}
+  private class StatelessWrapperWithResult[I,O](fun: PartialFunction[I,O @process]) extends Handler[I,(O,State)] {
+    override def isDefinedAt(in: (I,State)) = fun.isDefinedAt(in._1)
+    override def apply(in: (I,State)) = (fun(in._1), in._2)
+  }
+  private class StatelessWrapperNoResult[I,O](fun: PartialFunction[I,Any @process]) extends Handler[I,State] {
+    override def isDefinedAt(in: (I,State)) = fun.isDefinedAt(in._1)
+    override def apply(in: (I,State)) = {
+      fun(in._1)
+      in._2
+    }
+  }
+
   protected type Handler[I,O] = PartialFunction[(I,State),O @process]
-  protected def iqGet(state: State): Seq[Handler[IQGet,(IQResponse,State)]] = Nil
-  protected def iqSet(state: State): Seq[Handler[IQSet,(IQResponse,State)]] = Nil
-  protected def message(state: State): Seq[Handler[MessagePacket,State]] = Nil
-  protected def presence(state: State): Seq[Handler[PresencePacket,State]] = Nil
-  protected def other(state: State): Seq[Handler[XMPPPacket,State]] = Nil
+  protected def iqGet(state: State): Seq[Handler[IQGet,(IQResponse,State)]] =
+    stateless.stateless_iqGet.map(new StatelessWrapperWithResult(_))
+  protected def iqSet(state: State): Seq[Handler[IQSet,(IQResponse,State)]] =
+    stateless.stateless_iqSet.map(new StatelessWrapperWithResult(_))
+  protected def message(state: State): Seq[Handler[MessagePacket,State]] =
+    stateless.stateless_message.map(new StatelessWrapperNoResult(_))
+  protected def presence(state: State): Seq[Handler[PresencePacket,State]] =
+    stateless.stateless_presence.map(new StatelessWrapperNoResult(_))
+  protected def other(state: State): Seq[Handler[XMPPPacket,State]] =
+    stateless.stateless_other.map(new StatelessWrapperNoResult(_))
 
   protected def mkIqGet(fun: Handler[IQGet,(IQResponse,State)]) = fun
   protected def mkIqSet(fun: Handler[IQSet,(IQResponse,State)]) = fun
@@ -233,17 +257,23 @@ object ElemName {
 
 /** XMPP Chat Messages */
 object Chat {
-  /** (Subject, Body, Sender) */
+  /** (Subject, Thread, Body, Sender) */
   def unapply(msg: MessagePacket) = msg match {
     case MessageSend(_, "chat", from, _, content) =>
-      for {
-        body <- content.find(_.label == "body")
-        subject <- content.find(_.label == "subject").map(_.text)
-      } yield (subject, body, from)
+      content.find(_.label=="body").map { body =>
+        val subject = content.find(_.label=="subject")
+        val thread = content.find(_.label=="thread").map(_.text)
+        (subject, thread, body.text, from)
+      }
     case _ => None
   }
-  def apply(subject: String, body: NodeSeq, to: JID, from: JID) = {
-    val c = <subject>{subject}</subject><body>{body}</body>;
+  def apply(subject: Option[NodeSeq], thread: Option[String], body: String, to: JID, from: JID) = {
+    val parts = (
+      subject.map(s => <subject>{s}</subject>) ::
+      thread.map(t => <thread>{t}</thread>) :: 
+      Some(body).map(b => <body>{b}</body>) :: Nil
+    ).flatten
+    val c = parts.foldLeft(NodeSeq.Empty)(_ ++ _)
     MessageSend(
       id=None,
       messageType="chat",

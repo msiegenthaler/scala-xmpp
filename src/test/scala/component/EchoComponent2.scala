@@ -17,12 +17,9 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
   trait JIDStore {
     protected[this] val prefix: String
     protected[this] def key = prefix+".jids"
-    def add(jid: JID) = {
-      save(get :+ jid)
-    }
-    def remove(jid: JID) = {
-      save(get.filter(_==jid))
-    }
+    def add(jid: JID) = save(get :+ jid)
+    def remove(jid: JID) = save(get.filter(_==jid))
+    def set(list: Seq[JID]) = save(list)
     protected[this] def save(list: Seq[JID]) = {
       val string = list.map(_.stringRepresentation).mkString(",")
       store.put(key, string)
@@ -42,99 +39,94 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
 
 
 
-  //TODO use the new tools to make the implementation easier
-  class EchoAgent(services: AgentServices) extends Agent with ConcurrentObject {
-    val name = services.jid.node.getOrElse("")
-    val subscribers = new JIDStore { override val prefix = name }
-    protected[this] type State = Unit
-    override def handleMessage(packet: MessagePacket) = concurrent { packet match {
-      case MessageSend(_, "chat", from, _, content) =>
-        content.find(_.label == "body").map(_.text).foreach_cps { text =>
-          println("Echo "+name+" got message "+text)
-          text match {
-            case "stop" => services.unregister
-            case "offline" => announceOffline()
-            case "online" => announce()
-            case text =>
-              val c = <subject>Echo</subject><body>{name} says {text}</body>;
-              services.send(MessageSend(
-                id=None,
-                messageType="chat",
-                from=services.jid,
-                to=from,
-                content=c))
-          }
-        }
-      case other => //ignore
-    }}
-    override def handleIQ(packet: IQRequest) = concurrentWithReply {
-      packet.resultError(StanzaError.badRequest)
-    }
-    override def handlePresence(packet: PresencePacket) = concurrent { packet match {
-      case Presence(from, content, Some("subscribe"), _, _) =>
-        console("got subscription request from "+from)
-        addSubscription(from)
-      case Presence(from, content, Some("unsubscribed"), _, id) =>
-        console(""+from+" unsubscribed")
-        removeSubscription(from)
-      case Presence(from, content, Some("probe"), _, id) =>
-        console("got probe from "+from)
-        announce(Some(from))
-      case other =>
-        //ignore
-    }}
-    override def connected = concurrent {
-      console("connected")
-      announce(None)
-    }
-    override def connectionLost = {
-      console("lost connection")
-    }
-    override def shutdown = concurrent {
-      announceOffline(None)
-      console("is shut down")
-    }
-    private def console(what: String) = {
-      println("Echo "+name+" "+what)
+  class EchoAgent(override protected[this] val services: AgentServices) extends PresenceManager {
+    protected[this] val name = services.jid.node.getOrElse("")
+    protected[this] val jidStore = new JIDStore { override val prefix = services.jid.toString }
+
+    protected case class EchoAgentState(friends: Set[JID], status: Status)
+    protected[this] type State = EchoAgentState
+
+    protected[this] override def init = {
+      val status = Status(<show>chat</show><status>Ready to echo</status>)
+      EchoAgentState(Set() ++ jidStore.get, status)
     }
 
-    protected[this] def announce(to: Option[JID]=None): Unit @process = {
-      val status = <show>chat</show><status>Ready to echo!</status>;
-      announce(to, None, status)
-    }
-    protected[this] def announceOffline(to: Option[JID]=None) = {
-      val status = <status>I'm gone</status>;
-      announce(to, Some("unavailable"), status)
-    }
-    protected[this] def announce(to: Option[JID], kind: Option[String], status: NodeSeq): Unit @process = to match {
-      case Some(_) =>
-        services.send(Presence(from=services.jid, to=to, content=status, presenceType=kind)).receiveOption(1 s)
-        ()
-      case None =>
-        console("Announcing presence to all subscribers")
-        val selectors = subscribers.get.map_cps { to =>
-          console(" informs "+to)
-          services.send(Presence(from=services.jid, to=Some(to), content=status, presenceType=kind))
+    protected[this] override def message(state: State) = super.message(state) :+ echo
+
+    protected[this] def echo = mkMsg {
+      case (Chat(_, thread, body, from),state) =>
+        body match {
+          case Command("status", text) =>
+            log.info("Echo {} changing status to {}", name, text)
+            announce
+            state.copy(status=Status(<show>chat</show><status>{text}</status>))
+          case Command("offline", _) =>
+            log.info("Echo {} goes offline", name)
+            announce
+            state.copy(status=Status(<status>Offline</status>, Some("unavailable")))
+          case Command("online", _) =>
+            log.info("Echo {} comes back online", name)
+            announce
+            state.copy(status=Status(<show>chat</show><status>Ready to echo</status>))
+          case echo =>
+            log.info("Echo {} echos message {}", name, body)
+            services.send(Chat(None, thread, name+" says "+echo, from, services.jid)).receive
+            state
         }
-        selectors.foreach_cps(_.receiveOption(1 s))
     }
-    protected[this] def addSubscription(jid: JID) = {
-      services.send(Presence(services.jid, NodeSeq.Empty, Some("subscribed"), Some(jid))).receive
-      subscribers.add(jid)
-      services.send(Presence(services.jid, NodeSeq.Empty, Some("subscribe"), Some(jid))).receive
+    protected object Command {
+      def unapply(body: String) = {
+        val (command, args) = body.span(_ != ' ')
+        if (command.length > 0) Some(command.toLowerCase, args.drop(1))
+        else None
+      }
     }
-    protected[this] def removeSubscription(jid: JID) = {
-      subscribers.remove(jid)
+
+    protected[this] override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+      val f = state.friends + from
+      jidStore.set(f.toList)
+      state.copy(friends=f)
+    }
+    protected[this] override def removeSubscription(state: State)(from: JID) = {
+      val f = state.friends.filterNot(_ == from)
+      jidStore.set(f.toList)
+      state.copy(friends=f)
+    }
+    protected[this] override def status(state: State) = state.status
+  }
+
+  /**
+   * Agent that shows information about the component
+   */
+  class AboutAgent(override protected[this] val services: AgentServices, manager: AgentManager) extends PresenceManager {
+    protected case class InfoAgentState(friends: Set[JID])
+    protected[this] type State = InfoAgentState
+
+    protected[this] override val stateless = new ComponentInfoAgent {
+      override val services = AboutAgent.this.services
+      override val manager = AboutAgent.this.manager
+    }
+    
+    protected[this] override def init = InfoAgentState(Set() ++ jidStore.get)
+    protected[this] val jidStore = new JIDStore { override val prefix = services.jid.toString }
+
+    protected[this] override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+      val f = state.friends + from
+      jidStore.set(f.toList)
+      state.copy(friends=f)
+    }
+    protected[this] override def removeSubscription(state: State)(from: JID) = {
+      val f = state.friends.filterNot(_ == from)
+      jidStore.set(f.toList)
+      state.copy(friends=f)
     }
   }
 
+
+
   val spec = AgentComponent.specification("Echo", "Echos everything said the members", "echo2", Some("secret")) { am =>
-    am.register("hans", new EchoAgent(_))
-    //TODO Presence for InfoAgent
-    am.register("about", s => new ComponentInfoAgent {
-      override val services = s
-      override val manager = am
-    })
+    am.register("hans",  s => Spawner.start(new EchoAgent(s), SpawnAsRequiredChild))
+    am.register("about", s => Spawner.start(new AboutAgent(s, am), SpawnAsRequiredChild))
   }
   server.register(spec)
 }}
