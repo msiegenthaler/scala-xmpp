@@ -27,9 +27,9 @@ trait ByteCPXMPPConnectionFactory extends XMPPConnectionFactory {
   /** charset for decoding/encoding xml to bytes */
   val encoding: Charset = Charset.forName("UTF-8")
 
-  protected[this] def openRawConnection: CommunicationPort[Byte,Byte] @process
+  protected def openRawConnection: CommunicationPort[Byte,Byte] @process
 
-  protected[this] def open(outgoingRoot: Elem): ConnectionObject @process = {
+  protected def open(outgoingRoot: Elem): ConnectionObject @process = {
     val raw = openRawConnection
     val xmlSource = XmlChunkSource.fromBytes(byteSource=raw, encoding=encoding, sendRoot=true)
     val xmlSink = XmlChunkSink.withRoot(outgoingRoot).outputingBytesTo(raw, encoding)()
@@ -46,7 +46,7 @@ trait ByteCPXMPPConnectionFactory extends XMPPConnectionFactory {
       override val sink = xmppSink
     }
   }
-  protected[this] def close(conObj: ConnectionObject): Unit @process = {
+  protected def close(conObj: ConnectionObject): Unit @process = {
     conObj.close
   }
 
@@ -58,7 +58,7 @@ trait ByteCPXMPPConnectionFactory extends XMPPConnectionFactory {
     )
   }
 
-  protected[this] trait ConnectionObject {
+  protected trait ConnectionObject {
     val source: Source[XMPPPacket]
     val sink: Sink[XMPPPacket]
     def close: Unit @process = {
@@ -75,23 +75,23 @@ trait SocketXMPPConnectionFactory extends ByteCPXMPPConnectionFactory {
   /** TCP Port */
   val port: Int
 
-  protected[this] override def openRawConnection = {
+  protected override def openRawConnection = {
     CommunicationPort[Byte,Byte,SocketConnection](
       open = openSocket,
       close = closeSocket(_)
     ).receive
   }
-  protected[this] def openSocket = {
+  protected def openSocket = {
     val socket = new Socket(host, port)
     val source = InputStreamSource(socket.getInputStream)
     val sink = OutputStreamSink(socket.getOutputStream)
     new SocketConnection(socket, source, sink)
   }
-  protected[this] def closeSocket(sc: SocketConnection) = {
+  protected def closeSocket(sc: SocketConnection) = {
     sc.source.close.await
     sc.sink.close.await
     sc.socket.close
   }
 
-  protected[this] case class SocketConnection(socket: Socket, source: Source[Byte], sink: Sink[Byte])
+  protected case class SocketConnection(socket: Socket, source: Source[Byte], sink: Sink[Byte])
 }

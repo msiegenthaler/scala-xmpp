@@ -102,7 +102,7 @@ trait StatefulAgent extends Agent with StateServer {
     handler.find(_.isDefinedAt(v)).map_cps(_.apply(v))
   }
 
-  protected[this] val stateless: StatelessAgent = new StatelessAgent{}
+  protected val stateless: StatelessAgent = new StatelessAgent{}
   private class StatelessWrapperWithResult[I,O](fun: PartialFunction[I,O @process]) extends Handler[I,(O,State)] {
     override def isDefinedAt(in: (I,State)) = fun.isDefinedAt(in._1)
     override def apply(in: (I,State)) = (fun(in._1), in._2)
@@ -139,9 +139,9 @@ trait StatefulAgent extends Agent with StateServer {
  * Manages the presence-subscriptions of an agent.
  */
 trait PresenceManager extends StatefulAgent with Log {
-  protected[this] val services: AgentServices 
+  protected val services: AgentServices 
 
-  protected[this] override type State <: {
+  protected override type State <: {
     def friends: Iterable[JID]
   }
 
@@ -208,25 +208,25 @@ trait PresenceManager extends StatefulAgent with Log {
   /**
    * Check if the subscription is accectable and add it to the state if accepted.
    */
-  protected[this] def acceptSubscription(state: State)(from: JID, content: NodeSeq): State
+  protected def acceptSubscription(state: State)(from: JID, content: NodeSeq): State @process
   /**
    * Remove the subscription and return the state where it's removed.
    */
-  protected[this] def removeSubscription(state: State)(from: JID): State
+  protected def removeSubscription(state: State)(from: JID): State @process
 
   protected case class Status(status: NodeSeq, presenceType: Option[String] = None)
   /**
    * Return the current status of the Agent and an optional presence type.
    * i.e. None,<show>chat</show><status>Ready to rock the world</status>
    */
-  protected[this] def status(state: State) = {
+  protected def status(state: State) = {
     val s = <show>chat</show><status>Active</status>;
     Status(s)
   }
   /**
    * Status for this agen when it's offline
    */
-  protected[this] def offlineStatus(state: State) = {
+  protected def offlineStatus(state: State) = {
     val s = <status>Offline</status>;
     Status(s, Some("unavailable"))
   }

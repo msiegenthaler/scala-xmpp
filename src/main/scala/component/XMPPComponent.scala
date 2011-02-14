@@ -131,11 +131,11 @@ protected[component] trait Connection {
 
 protected[component] trait BaseConnectionManager extends ConnectionManager {
   protected val encoding = Charset.forName("UTF-8")
-  protected[this] val connectionEstablishTimeout = 5 s
-  protected[this] val connectionAnswerTimeout = 2 s
+  protected val connectionEstablishTimeout = 5 s
+  protected val connectionAnswerTimeout = 2 s
 
-  protected[this] def connectionFactory: XMPPConnectionFactory
-  protected[this] def defaultSecret: Option[String]
+  protected def connectionFactory: XMPPConnectionFactory
+  protected def defaultSecret: Option[String]
 
   override def open(subdomain: String, secret: Option[String]) = {
     val root = <stream:stream xmlns="jabber:component:accept" 
@@ -202,15 +202,15 @@ protected[component] class ComponentWrapper(
     connectionMgr : ConnectionManager,
     keepAliveInterval: Duration) extends StateServer {
 
-  protected[this] override type State = ComponentWrapperState
-  protected[this] case class ComponentWrapperState(
+  protected override type State = ComponentWrapperState
+  protected case class ComponentWrapperState(
     component: Option[XMPPComponent],
     connector: Option[Process],
     reader: Option[Process],
     keepalive: Process,
     connection: Option[Connection])
 
-  protected[this] override def init = {
+  protected override def init = {
     val keepalive = spawnChild(Required) {
       //keep-alive
       def run: Unit @process = receiveWithin(keepAliveInterval) {
@@ -222,7 +222,7 @@ protected[component] class ComponentWrapper(
     openConnection
     ComponentWrapperState(None, None, None, keepalive, None)
   }
-  protected[this] override def handler(state: State) = {
+  protected override def handler(state: State) = {
     type HFun = PartialFunction[Any,Option[State] @process]
     def wait(sleep: Duration) = receiveWithin(sleep) {
       case Timeout => ()
@@ -260,13 +260,13 @@ protected[component] class ComponentWrapper(
     }
     connectorWatcher(super.handler(state))
   }
-  protected[this] override def termination(state: State) = {
+  protected override def termination(state: State) = {
     state.keepalive ! Terminate
     state.reader.foreach_cps(_ ! Terminate)
     state.connector.foreach_cps(_ ! Terminate)
   }
 
-  protected[this] def openConnection = cast { state =>
+  protected def openConnection = cast { state =>
     state.connector.foreach_cps(_ ! Terminate)
     state.reader.foreach_cps(_ ! Terminate)
     val connector = spawnChild(Monitored) {
@@ -275,7 +275,7 @@ protected[component] class ComponentWrapper(
     }
     state.copy(connector=Some(connector))
   }
-  protected[this] def connected(connection: Connection) = cast { state =>
+  protected def connected(connection: Connection) = cast { state =>
     log.debug("Established connection to XMPP-Server")
     ResourceManager[Connection](
       resource = connection,
@@ -300,12 +300,12 @@ protected[component] class ComponentWrapper(
     }
     state.copy(connection=Some(connection), component=Some(comp))
   }
-  protected[this] def connectionLost(state: State) = {
+  protected def connectionLost(state: State) = {
     log.info("Trying to reconnect to the XMPP-Server...")
     state.component.foreach_cps(_.connectionLost)
     openConnection
   }
-  protected[this] def startReader(state: State): State @process = state.connection match {
+  protected def startReader(state: State): State @process = state.connection match {
     case Some(connection) => state.component match {
       case Some(component) =>
         state.reader.foreach_cps(_ ! Terminate)
@@ -363,13 +363,13 @@ protected[component] class ComponentWrapper(
     }
     JID(server)
   }
-  protected[this] def uniqueId = java.util.UUID.randomUUID.toString
+  protected def uniqueId = java.util.UUID.randomUUID.toString
 
   def component = get(_.component)
 
-  protected[this] val writeTimeout = 5 s
+  protected val writeTimeout = 5 s
 
-  protected[this] object Manager extends XMPPComponentManager {
+  protected object Manager extends XMPPComponentManager {
     override def send(packet: XMPPPacket) = async { _.connection match {
       case Some(connection) => 
         connection.port.write(packet).receiveWithin(writeTimeout)
@@ -384,16 +384,16 @@ protected[component] class ComponentWrapper(
 case class StreamException(reasons: NodeSeq) extends Exception(reasons.map(_.label).mkString(", "))
 case class XMPPException(text: String) extends Exception(text)
 
-case class XMPPComponentHandshakeClient(secret: String, protected[this] val streamId: String, encoding: Charset)
+case class XMPPComponentHandshakeClient(secret: String, protected val streamId: String, encoding: Charset)
      extends OtherXMPPPacket {
   import java.security._
   import scalabase.extcol.ListUtil._
-  protected[this] def sha1Hash(of: String) = {
+  protected def sha1Hash(of: String) = {
     val digest = MessageDigest.getInstance("SHA1")
     digest.update(of.getBytes(encoding))
     digest.digest
   }
-  protected[this] def secretHash: String = {
+  protected def secretHash: String = {
     val source = streamId+secret
     val hashBinary = sha1Hash(source)
     hashBinary.view.map(_ & 0xFF).map(_.toHexString).map(s => if (s.length==1) "0"+s else s).mkString

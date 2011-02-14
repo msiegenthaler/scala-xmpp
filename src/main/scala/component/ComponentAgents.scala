@@ -14,7 +14,7 @@ import Messages._
  * Agent that answers discovery-IQs about its AgentComponent.
  */
 trait ComponentDiscoveryAgent extends StatelessAgent with Log {
-  protected[this] val manager: AgentManager
+  protected val manager: AgentManager
 
   protected override def iqGet = {
     super.iqGet :+ discovery
@@ -43,8 +43,8 @@ trait ComponentDiscoveryAgent extends StatelessAgent with Log {
  *  - help
  */
 trait ComponentInfoAgent extends StatelessAgent with Log {
-  protected[this] val manager: AgentManager
-  protected[this] val services: AgentServices
+  protected val manager: AgentManager
+  protected val services: AgentServices
 
   protected override def message = super.message :+ commands
 

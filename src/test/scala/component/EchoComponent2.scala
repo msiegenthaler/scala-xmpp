@@ -15,12 +15,12 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
 
   val store = java.util.prefs.Preferences.userRoot
   trait JIDStore {
-    protected[this] val prefix: String
-    protected[this] def key = prefix+".jids"
+    protected val prefix: String
+    protected def key = prefix+".jids"
     def add(jid: JID) = save(get :+ jid)
     def remove(jid: JID) = save(get.filter(_==jid))
     def set(list: Seq[JID]) = save(list)
-    protected[this] def save(list: Seq[JID]) = {
+    protected def save(list: Seq[JID]) = {
       val string = list.map(_.stringRepresentation).mkString(",")
       store.put(key, string)
     }
@@ -39,21 +39,21 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
 
 
 
-  class EchoAgent(override protected[this] val services: AgentServices) extends PresenceManager {
-    protected[this] val name = services.jid.node.getOrElse("")
-    protected[this] val jidStore = new JIDStore { override val prefix = services.jid.toString }
+  class EchoAgent(override protected val services: AgentServices) extends PresenceManager {
+    protected val name = services.jid.node.getOrElse("")
+    protected val jidStore = new JIDStore { override val prefix = services.jid.toString }
 
     protected case class EchoAgentState(friends: Set[JID], status: Status)
-    protected[this] type State = EchoAgentState
+    protected type State = EchoAgentState
 
-    protected[this] override def init = {
+    protected override def init = {
       val status = Status(<show>chat</show><status>Ready to echo</status>)
       EchoAgentState(Set() ++ jidStore.get, status)
     }
 
-    protected[this] override def message(state: State) = super.message(state) :+ echo
+    protected override def message(state: State) = super.message(state) :+ echo
 
-    protected[this] def echo = mkMsg {
+    protected def echo = mkMsg {
       case (Chat(_, thread, body, from),state) =>
         body match {
           case Command("status", text) =>
@@ -82,40 +82,40 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
       }
     }
 
-    protected[this] override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+    protected override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
       val f = state.friends + from
       jidStore.set(f.toList)
       state.copy(friends=f)
     }
-    protected[this] override def removeSubscription(state: State)(from: JID) = {
+    protected override def removeSubscription(state: State)(from: JID) = {
       val f = state.friends.filterNot(_ == from)
       jidStore.set(f.toList)
       state.copy(friends=f)
     }
-    protected[this] override def status(state: State) = state.status
+    protected override def status(state: State) = state.status
   }
 
   /**
    * Agent that shows information about the component
    */
-  class AboutAgent(override protected[this] val services: AgentServices, manager: AgentManager) extends PresenceManager {
+  class AboutAgent(override protected val services: AgentServices, manager: AgentManager) extends PresenceManager {
     protected case class InfoAgentState(friends: Set[JID])
-    protected[this] type State = InfoAgentState
+    protected type State = InfoAgentState
 
-    protected[this] override val stateless = new ComponentInfoAgent {
+    protected override val stateless = new ComponentInfoAgent {
       override val services = AboutAgent.this.services
       override val manager = AboutAgent.this.manager
     }
     
-    protected[this] override def init = InfoAgentState(Set() ++ jidStore.get)
-    protected[this] val jidStore = new JIDStore { override val prefix = services.jid.toString }
+    protected override def init = InfoAgentState(Set() ++ jidStore.get)
+    protected val jidStore = new JIDStore { override val prefix = services.jid.toString }
 
-    protected[this] override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+    protected override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
       val f = state.friends + from
       jidStore.set(f.toList)
       state.copy(friends=f)
     }
-    protected[this] override def removeSubscription(state: State)(from: JID) = {
+    protected override def removeSubscription(state: State)(from: JID) = {
       val f = state.friends.filterNot(_ == from)
       jidStore.set(f.toList)
       state.copy(friends=f)

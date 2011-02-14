@@ -138,28 +138,28 @@ object IQKey {
 
 
 trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
-  protected[this] case class AgentState(agents: Map[JID,AgentHandler], iqRegister: IQRegister, connected: Boolean)
-  protected[this] override type State = AgentState
+  protected case class AgentState(agents: Map[JID,AgentHandler], iqRegister: IQRegister, connected: Boolean)
+  protected override type State = AgentState
 
-  protected[this] val componentJID: JID
-  protected[this] val serverJID: JID
-  protected[this] val manager: XMPPComponentManager
+  protected val componentJID: JID
+  protected val serverJID: JID
+  protected val manager: XMPPComponentManager
 
-  protected[this] def createDomainAgent(services: AgentServices): Agent = {
+  protected def createDomainAgent(services: AgentServices): Agent = {
     new ComponentDiscoveryAgent {
       override val manager = AgentComponent.this
     }
   }
-  protected[this] object DomainHandler extends AgentHandler {
+  protected object DomainHandler extends AgentHandler {
     val jid = componentJID
     val agent = createDomainAgent(this)
   }
 
 
-  protected[this] override def init = {
+  protected override def init = {
     AgentState(Map() + (DomainHandler.jid -> DomainHandler), BidiMapIQRegister(), false)
   }
-  protected[this] override def handler(state: State) = super.handler(state).orElse_cps {
+  protected override def handler(state: State) = super.handler(state).orElse_cps {
     case ProcessCrash(process, _) =>
       val niqr = state.iqRegister.remove(process)
       Some(state.copy(iqRegister=niqr))
@@ -178,7 +178,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     if (state.connected) spawnChild(Required) { handler.agent.connected }
     state.copy(agents=state.agents + (handler.jid -> handler))
   }
-  protected[this] def unregister(jid: JID) = cast { state =>
+  protected def unregister(jid: JID) = cast { state =>
     state.agents.get(jid).foreach_cps { agent =>
       spawnChild(Required)(agent.shutdown)
     }
@@ -199,11 +199,11 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     stop
     state.copy(agents = Map())
   }
-  protected[this] def foreachAgent(state: State, fun: Agent => Unit @process) = {
+  protected def foreachAgent(state: State, fun: Agent => Unit @process) = {
     state.agents.values.foreach_cps(agent => spawnChild(Required)(fun(agent.agent)))
   }
 
-  protected[this] val iqTimeout = 10 minutes
+  protected val iqTimeout = 10 minutes
 
   override def process(packet: XMPPPacket) = asyncCast { state => packet match {
     case m: IQRequest =>
@@ -262,11 +262,11 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
       }
   }}
 
-  protected[this] def registerIQ(key: IQKey, process: Process) = cast { state =>
+  protected def registerIQ(key: IQKey, process: Process) = cast { state =>
     state.copy(iqRegister=state.iqRegister.register(key, process))
   }
 
-  protected[this] trait AgentHandler extends AgentServices {
+  protected trait AgentHandler extends AgentServices {
     def agent: Agent
     override val serverJid = serverJID
     override def send(packet: XMPPPacket) = manager.send(packet)
@@ -287,7 +287,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     override def unregister = AgentComponent.this.unregister(jid)
     def shutdown = agent.shutdown
   }
-  protected[this] object AgentHandler {
+  protected object AgentHandler {
     def apply(name: String, creator: AgentServices => Agent @process): AgentHandler @process = {
       new AgentHandler {
         var agent: Agent = null
