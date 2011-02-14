@@ -202,8 +202,7 @@ protected[component] class ComponentWrapper(
     connectionMgr : ConnectionManager,
     keepAliveInterval: Duration) extends StateServer {
 
-  protected override type State = ComponentWrapperState
-  protected case class ComponentWrapperState(
+  protected case class State(
     component: Option[XMPPComponent],
     connector: Option[Process],
     reader: Option[Process],
@@ -220,7 +219,7 @@ protected[component] class ComponentWrapper(
       run
     }
     openConnection
-    ComponentWrapperState(None, None, None, keepalive, None)
+    State(None, None, None, keepalive, None)
   }
   protected override def handler(state: State) = {
     type HFun = PartialFunction[Any,Option[State] @process]

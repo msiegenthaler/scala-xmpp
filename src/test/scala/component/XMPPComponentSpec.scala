@@ -66,9 +66,8 @@ class XMPPComponentSpec extends ProcessSpec with ShouldMatchers with Log {
       }
     }
 
-    case class ComponentMockState(connected: Boolean=false, received: Queue[XMPPPacket]=Queue(), manager: Option[XMPPComponentManager]=None)
-    override type State = ComponentMockState
-    override def init = ComponentMockState()
+    case class State(connected: Boolean=false, received: Queue[XMPPPacket]=Queue(), manager: Option[XMPPComponentManager]=None)
+    override def init = State()
     override def connected = cast { s =>
       s.connected should be(false)
       s.copy(connected=true)

@@ -138,8 +138,7 @@ object IQKey {
 
 
 trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
-  protected case class AgentState(agents: Map[JID,AgentHandler], iqRegister: IQRegister, connected: Boolean)
-  protected override type State = AgentState
+  protected case class State(agents: Map[JID,AgentHandler], iqRegister: IQRegister, connected: Boolean)
 
   protected val componentJID: JID
   protected val serverJID: JID
@@ -157,7 +156,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
 
 
   protected override def init = {
-    AgentState(Map() + (DomainHandler.jid -> DomainHandler), BidiMapIQRegister(), false)
+    State(Map() + (DomainHandler.jid -> DomainHandler), BidiMapIQRegister(), false)
   }
   protected override def handler(state: State) = super.handler(state).orElse_cps {
     case ProcessCrash(process, _) =>
