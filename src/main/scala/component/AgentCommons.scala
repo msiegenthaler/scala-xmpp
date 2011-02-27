@@ -11,66 +11,6 @@ import Messages._
 
 
 /**
- * Base class for the implementation of stateless agents.
- */
-trait StatelessAgentXXX extends Agent with ConcurrentObject {
-  override def handleIQ(packet: IQRequest) = concurrentWithReply {
-    packet match {
-      case get: IQGet =>
-        val r = handle(_iqGet)(get)
-        r.getOrElse_cps {
-          packet.resultError(StanzaError.badRequest)
-        }
-      case set: IQSet =>
-        val r = handle(_iqSet)(set)
-        r.getOrElse_cps {
-          packet.resultError(StanzaError.badRequest)
-        }
-    }
-  }
-  override def handleMessage(packet: MessagePacket) = concurrent {
-    handleNoResult(_message)(packet)
-  }
-  override def handlePresence(packet: PresencePacket) = concurrent {
-    handleNoResult(_presence)(packet)
-  }
-  override def handleOther(packet: XMPPPacket) = concurrent {
-    handleNoResult(_other)(packet)
-  }
-
-  private def handleNoResult[X](handler: Traversable[Handler[X,_]])(value: X) =
-    handler.find(_.isDefinedAt(value)).foreach_cps(_.apply(value))
-  private def handle[X,R](handler: Traversable[Handler[X,R]])(value: X) =
-    handler.find(_.isDefinedAt(value)).map_cps(_.apply(value))
-
-  protected type Handler[I,O] = PartialFunction[I,O @process]
-
-  /** Handlers for IQ-Get requests. Will be cached */
-  protected def iqGet: Seq[Handler[IQGet,IQResponse]] = Nil
-  /** Handlers for IQ-Set requests. Will be cached */
-  protected def iqSet: Seq[Handler[IQSet,IQResponse]] = Nil
-  /** Handlers for Messages. Will be cached */
-  protected def message: Seq[Handler[MessagePacket,Any]] = Nil
-  /** Handlers for Presences. Will be cached */
-  protected def presence: Seq[Handler[PresencePacket,Any]] = Nil
-  /** Handler for other XMPP-Requests. Will be cached */
-  protected def other: Seq[Handler[XMPPPacket,Any]] = Nil
-
-  private[component] final lazy val _iqGet = iqGet
-  private[component] final lazy val _iqSet = iqSet
-  private[component] final lazy val _message = message
-  private[component] final lazy val _presence = presence
-  private[component] final lazy val _other = other
-
-  protected def mkIqGet(fun: Handler[IQGet,IQResponse]) = fun
-  protected def mkIqSet(fun: Handler[IQGet,IQResponse]) = fun
-  protected def mkMsg(fun: Handler[MessagePacket,_]) = fun
-  protected def mkPres(fun: Handler[PresencePacket,_]) = fun
-  protected def mkOther(fun: Handler[XMPPPacket,_]) = fun
-}
-
-
-/**
  * Base class for the implementation of stateful agents (based upon a StateServer).
  */
 trait StatefulAgent extends Agent with StateServer {
