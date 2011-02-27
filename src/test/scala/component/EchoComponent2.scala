@@ -51,27 +51,26 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
       EchoAgentState(Set() ++ jidStore.get, status)
     }
 
-    protected override def message(state: State) = super.message(state) :+ echo
+    protected override def message = super.message :+ echo
 
     protected def echo = mkMsg {
       case (Chat(_, thread, body, from),state) =>
         body match {
           case Command("status", text) =>
             log.info("Echo {} changing status to {}", name, text)
+            atomic(_.copy(status=Status(<show>chat</show><status>{text}</status>)))
             announce
-            state.copy(status=Status(<show>chat</show><status>{text}</status>))
           case Command("offline", _) =>
             log.info("Echo {} goes offline", name)
+            atomic(_.copy(status=Status(<status>Offline</status>, Some("unavailable"))))
             announce
-            state.copy(status=Status(<status>Offline</status>, Some("unavailable")))
           case Command("online", _) =>
             log.info("Echo {} comes back online", name)
+            atomic(_.copy(status=Status(<show>chat</show><status>Ready to echo</status>)))
             announce
-            state.copy(status=Status(<show>chat</show><status>Ready to echo</status>))
           case echo =>
             log.info("Echo {} echos message {}", name, body)
             services.send(Chat(None, thread, name+" says "+echo, from, services.jid)).receive
-            state
         }
     }
     protected object Command {
@@ -82,12 +81,12 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
       }
     }
 
-    protected override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+    protected override def acceptSubscription(from: JID, content: NodeSeq)(state: State) = {
       val f = state.friends + from
       jidStore.set(f.toList)
       state.copy(friends=f)
     }
-    protected override def removeSubscription(state: State)(from: JID) = {
+    protected override def removeSubscription(from: JID)(state: State) = {
       val f = state.friends.filterNot(_ == from)
       jidStore.set(f.toList)
       state.copy(friends=f)
@@ -110,12 +109,12 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
     protected override def init = InfoAgentState(Set() ++ jidStore.get)
     protected val jidStore = new JIDStore { override val prefix = services.jid.toString }
 
-    protected override def acceptSubscription(state: State)(from: JID, content: NodeSeq) = {
+    protected override def acceptSubscription(from: JID, content: NodeSeq)(state: State) = {
       val f = state.friends + from
       jidStore.set(f.toList)
       state.copy(friends=f)
     }
-    protected override def removeSubscription(state: State)(from: JID) = {
+    protected override def removeSubscription(from: JID)(state: State) = {
       val f = state.friends.filterNot(_ == from)
       jidStore.set(f.toList)
       state.copy(friends=f)

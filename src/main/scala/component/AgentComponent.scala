@@ -67,7 +67,7 @@ trait AgentServices {
   /**
    * Unregister the Agent from the AgentManager. Shutdown will be called.
    */
-  def unregister: Unit @process
+  def unregister: Completion @process
 }
 
 
@@ -167,22 +167,20 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
       Some(state.copy(iqRegister=niqr))
   }
 
-  override def register(name: String, creator: AgentServices => Agent @process) = cast { state =>
+  protected val removeTimeout = 1 minute
+  override def register(name: String, creator: AgentServices => Agent @process) = concurrent { state =>
     val handler = AgentHandler(name, creator)
-    // unregister and shutdown the previous handler
-    state.agents.get(handler.jid).foreach_cps { agent =>
-      spawnChild(Required)(agent.shutdown)
+    unregister(handler.jid).receiveOption(removeTimeout)
+    atomic { state =>                                                                                              
+      if (state.connected) spawnChild(Required) { handler.agent.connected }
+      state.copy(agents=state.agents + (handler.jid -> handler))
     }
-    // initialize the new handler
-    if (state.connected) spawnChild(Required) { handler.agent.connected }
-    state.copy(agents=state.agents + (handler.jid -> handler))
   }
-  protected def unregister(jid: JID) = cast { state =>
-    state.agents.get(jid).foreach_cps { agent =>
-      spawnChild(Required)(agent.shutdown)
-    }
-    state.copy(agents=state.agents - jid)
+  protected def unregister(jid: JID) = async { state =>
+    atomic(state => state.copy(agents=state.agents-jid))
+    state.agents.get(jid).foreach_cps(_.shutdown)    
   }
+
   override def registeredComponents = get(_.agents.mapValues(_.agent))
 
   override def connected = cast { state =>
@@ -204,7 +202,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
 
   protected val iqTimeout = 10 minutes
 
-  override def process(packet: XMPPPacket) = asyncCast { state => packet match {
+  override def process(packet: XMPPPacket) = concurrent { state => packet match {
     case m: IQRequest =>
       state.agents.get(m.to) match {
         case Some(agent) =>
