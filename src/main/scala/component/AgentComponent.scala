@@ -11,7 +11,7 @@ import Messages._
 
 
 /** Participant of an agent component (JID i.e. agent@component) */
-trait Agent {
+trait Agent extends Spawnable {
   def handleIQ(packet: IQRequest): Selector[IQResponse] @process = {
     val r = RequestToken[IQResponse]
     r.reply(packet.resultError(StanzaError.badRequest))
@@ -34,6 +34,8 @@ trait Agent {
   def connectionLost: Unit @process = noop
   /** Terminate the agent and release all resources. */
   def shutdown: Unit @process = noop
+
+  private[component] def agentProcess = process
 }
 
 /** Functions available to an agent */
@@ -70,13 +72,12 @@ trait AgentServices {
   def unregister: Completion @process
 }
 
-
 trait AgentManager {
   /**
    * Adds a new agent.
    * @name Name-part of the JID (name@domain)
    */
-  def register(name: String, agent: AgentServices => Agent @process): Unit @process
+  def register(name: String, agent: AgentServices => Agent): Unit @process
 
   /** View of all currently registered agents */
   def registeredComponents: Selector[Map[JID,Agent]] @process
@@ -144,33 +145,30 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   protected val serverJID: JID
   protected val manager: XMPPComponentManager
 
-  protected def createDomainAgent(services: AgentServices): Agent = {
-    new ComponentDiscoveryAgent {
-      override val manager = AgentComponent.this
-    }
-  }
-  protected object DomainHandler extends AgentHandler {
-    val jid = componentJID
-    val agent = createDomainAgent(this)
-  }
-
-
   protected override def init = {
     State(Map() + (DomainHandler.jid -> DomainHandler), BidiMapIQRegister(), false)
   }
-  protected override def handler(state: State) = super.handler(state).orElse_cps {
-    case ProcessCrash(process, _) =>
+  protected override def handler(state: State) = {
+    def handleCrash(process: Process) = {
       val niqr = state.iqRegister.remove(process)
+      val agent = agentForProcess(process)(state)
+      agent.foreach_cps(h => register(h.name, h.creator))
       Some(state.copy(iqRegister=niqr))
-    case ProcessKill(process, _, _) =>
-      val niqr = state.iqRegister.remove(process)
-      Some(state.copy(iqRegister=niqr))
+    }
+    super.handler(state).orElse_cps {
+      case ProcessCrash(process, _) => handleCrash(process)
+      case ProcessKill(process, _, _) => handleCrash(process)
+    }
   }
+  private def agentForProcess(process: Process)(state: State) =
+    state.agents.map(_._2).find(_.process == process)
+
 
   protected val removeTimeout = 1 minute
-  override def register(name: String, creator: AgentServices => Agent @process) = concurrent { state =>
+  override def register(name: String, creator: AgentServices => Agent) = concurrent { state =>
     val handler = AgentHandler(name, creator)
     unregister(handler.jid).receiveOption(removeTimeout)
+    handler.start
     atomic { state =>                                                                                              
       if (state.connected) spawnChild(Required) { handler.agent.connected }
       state.copy(agents=state.agents + (handler.jid -> handler))
@@ -264,7 +262,12 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   }
 
   protected trait AgentHandler extends AgentServices {
+    val name: String
+    val creator: AgentServices => Agent
+
     def agent: Agent
+    def process = agent.agentProcess
+    def start = Spawner.start(agent, SpawnAsMonitoredChild)
     override val serverJid = serverJID
     override def send(packet: XMPPPacket) = manager.send(packet)
     override def request(packet: IQRequest) = {
@@ -285,8 +288,12 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     def shutdown = agent.shutdown
   }
   protected object AgentHandler {
-    def apply(name: String, creator: AgentServices => Agent @process): AgentHandler @process = {
+    def apply(name: String, creator: AgentServices => Agent): AgentHandler @process = {
+      val c = creator
+      val n = name
       new AgentHandler {
+        override val creator = c
+        override val name = n
         var agent: Agent = null
         val jid: JID = JID(name, componentJID.domain)
         def create = {
@@ -294,6 +301,20 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
           this
         }
       }.create
+    }
+  }
+
+  protected object DomainHandler extends AgentHandler {
+    val creator = createDomainAgent _
+    val name = null 
+    val jid = componentJID
+    val agent = createDomainAgent(this)
+    protected def createDomainAgent(services: AgentServices): Agent = {
+      new ComponentDiscoveryAgent {
+        override type State = Unit
+        override def init = ()
+          override val manager = AgentComponent.this
+      }
     }
   }
 }

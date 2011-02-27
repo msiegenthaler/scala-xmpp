@@ -97,15 +97,11 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
   /**
    * Agent that shows information about the component
    */
-  class AboutAgent(override protected val services: AgentServices, manager: AgentManager) extends PresenceManager {
+  class AboutAgent(override protected val services: AgentServices, override val manager: AgentManager)
+      extends PresenceManager with ComponentInfoAgent {
     protected case class InfoAgentState(friends: Set[JID])
     protected type State = InfoAgentState
 
-    protected override val stateless = new ComponentInfoAgent {
-      override val services = AboutAgent.this.services
-      override val manager = AboutAgent.this.manager
-    }
-    
     protected override def init = InfoAgentState(Set() ++ jidStore.get)
     protected val jidStore = new JIDStore { override val prefix = services.jid.toString }
 
@@ -124,9 +120,9 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
 
 
   val spec = AgentComponent.specification("Echo", "Echos everything said the members", "echo2", Some("secret")) { am =>
-    am.register("hans",  s => Spawner.start(new EchoAgent(s), SpawnAsRequiredChild))
-    am.register("peter",  s => Spawner.start(new EchoAgent(s), SpawnAsRequiredChild))
-    am.register("about", s => Spawner.start(new AboutAgent(s, am), SpawnAsRequiredChild))
+    am.register("hans", new EchoAgent(_))
+    am.register("peter", new EchoAgent(_))
+    am.register("about", new AboutAgent(_, am))
   }
   server.register(spec)
 }}

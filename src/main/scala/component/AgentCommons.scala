@@ -13,7 +13,7 @@ import Messages._
 /**
  * Base class for the implementation of stateless agents.
  */
-trait StatelessAgent extends Agent with ConcurrentObject {
+trait StatelessAgentXXX extends Agent with ConcurrentObject {
   override def handleIQ(packet: IQRequest) = concurrentWithReply {
     packet match {
       case get: IQGet =>
@@ -102,36 +102,18 @@ trait StatefulAgent extends Agent with StateServer {
     handler.find(_.isDefinedAt(v)).map_cps(_.apply(v))
   }
 
-  protected val stateless: StatelessAgent = new StatelessAgent{}
-  private class StatelessWrapperWithResult[I,O](fun: PartialFunction[I,O @process]) extends Handler[I,O] {
-    override def isDefinedAt(in: (I,State)) = fun.isDefinedAt(in._1)
-    override def apply(in: (I,State)) = fun(in._1)
-  }
-  private class StatelessWrapperNoResult[I,O](fun: PartialFunction[I,Any @process]) extends Handler[I,Unit] {
-    override def isDefinedAt(in: (I,State)) = fun.isDefinedAt(in._1)
-    override def apply(in: (I,State)) = {
-      fun(in._1)
-      noop
-    }
-  }
-
   protected type Handler[I,O] = PartialFunction[(I,State),O @process]
 
   /** Handlers for IQ-Get requests. Will be cached */
-  protected def iqGet: Seq[Handler[IQGet,IQResponse]] =
-    stateless._iqGet.map(new StatelessWrapperWithResult(_))
+  protected def iqGet: Seq[Handler[IQGet,IQResponse]] = Nil
   /** Handlers for IQ-Set requests. Will be cached */
-  protected def iqSet: Seq[Handler[IQSet,IQResponse]] =
-    stateless._iqSet.map(new StatelessWrapperWithResult(_))
+  protected def iqSet: Seq[Handler[IQSet,IQResponse]] = Nil
   /** Handlers for Messages. Will be cached */
-  protected def message: Seq[Handler[MessagePacket,Unit]] =
-    stateless._message.map(new StatelessWrapperNoResult(_))
+  protected def message: Seq[Handler[MessagePacket,Unit]] = Nil
   /** Handlers for Presence-Messages. Will be cached */
-  protected def presence: Seq[Handler[PresencePacket,Unit]] =
-    stateless._presence.map(new StatelessWrapperNoResult(_))
+  protected def presence: Seq[Handler[PresencePacket,Unit]] = Nil
   /** Handler for other XMPP-Messages. Will be cached */
-  protected def other: Seq[Handler[XMPPPacket,Unit]] =
-    stateless._other.map(new StatelessWrapperNoResult(_))
+  protected def other: Seq[Handler[XMPPPacket,Unit]] = Nil
 
   private[this] lazy val _iqGet = iqGet
   private[this] lazy val _iqSet = iqSet
