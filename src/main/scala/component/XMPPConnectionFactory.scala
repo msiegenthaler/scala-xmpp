@@ -36,10 +36,12 @@ trait ByteCPXMPPConnectionFactory extends XMPPConnectionFactory {
     val xmppSource = new OneToOneTransformingSource[Elem,XMPPPacket] {
       override val source = xmlSource
       override def transform(elem: Elem) = XMPPPacket(elem)
+      override def toString = "XmppSource"
     }
     val xmppSink = new OneToOneTransformingSink[XMPPPacket,Elem] {
       override val sink = xmlSink
       override def transform(packet: XMPPPacket) = packet.xml
+      override def toString = "XmppSink"
     }
     new ConnectionObject {
       override val source = xmppSource

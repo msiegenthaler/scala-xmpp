@@ -36,6 +36,8 @@ trait Agent extends Spawnable {
   def shutdown: Unit @process = noop
 
   private[component] def agentProcess = process
+  
+  override def toString = "Agent"
 }
 
 /** Functions available to an agent */
@@ -260,6 +262,8 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
   protected def registerIQ(key: IQKey, process: Process) = cast { state =>
     state.copy(iqRegister=state.iqRegister.register(key, process))
   }
+  
+  override def toString = "AgentComponent("+componentJID+")"
 
   protected trait AgentHandler extends AgentServices {
     val name: String

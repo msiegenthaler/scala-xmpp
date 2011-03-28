@@ -84,6 +84,7 @@ class XMPPComponentSpec extends ProcessSpec with ShouldMatchers with Log {
     }
     
     override def shutdown = stopAndWait.receiveWithin(100 ms)
+    override def toString = "ComponentMock"
   }
 
 
@@ -161,6 +162,7 @@ class XMPPComponentSpec extends ProcessSpec with ShouldMatchers with Log {
       }
       reader = spawnChild(Required) {
         val decoder = java.nio.charset.Charset.forName("UTF-8").newDecoder()
+        processName("Reader")
         def read: Unit @process = {
           val a = deviceInput.available
           if (a > 0) {

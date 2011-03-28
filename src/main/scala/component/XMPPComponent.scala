@@ -99,7 +99,7 @@ object XMPPComponentServer {
         Spawner.start(wrapper, SpawnAsRequiredChild)
         ()
       }
-      override def toString = "<XMPPServer "+host+":"+port+">"
+      override def toString = "XMPPServer("+host+":"+port+")"
     }
   }
 
@@ -367,6 +367,8 @@ protected[component] class ComponentWrapper(
   def component = get(_.component)
 
   protected val writeTimeout = 5 s
+  
+  override def toString = "ComponentWrapper("+spec.name+")"
 
   protected object Manager extends XMPPComponentManager {
     override def send(packet: XMPPPacket) = async { _.connection match {

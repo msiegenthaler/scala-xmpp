@@ -31,6 +31,8 @@ trait ComponentDiscoveryAgent extends StatefulAgent with Log {
         </query>
       }
   }
+  
+  override def toString = "ComponentDiscoveryAgent"
 }
 
 /**
@@ -72,4 +74,6 @@ trait ComponentInfoAgent extends StatefulAgent with Log {
       Some(body.takeWhile(_ != ' ').toLowerCase)
     }
   }
+
+  override def toString = "ComponentInfoAgent"
 }

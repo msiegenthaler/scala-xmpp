@@ -66,6 +66,8 @@ trait StatefulAgent extends Agent with StateServer {
   protected def mkMsg(fun: Handler[MessagePacket,Unit]) = fun
   protected def mkPres(fun: Handler[PresencePacket,Unit]) = fun
   protected def mkOther(fun: Handler[XMPPPacket,Unit]) = fun
+  
+  override def toString = "StatefulAgent"
 }
 
 
