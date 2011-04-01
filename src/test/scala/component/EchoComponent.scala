@@ -119,7 +119,7 @@ class EchoComponent(spec: EchoComponentSpecification, id: JID, manager: XMPPComp
 
   private[this] def msgHans(to: JID, text: String) = {
     val c = <body>{text}</body>
-    manager.send(MessageSend(id=None, messageType="chat",
+    manager.send(MessageSend(id=None, messageType=Some("chat"),
       from=hans,
       to=to,
       content=c

@@ -192,7 +192,7 @@ object ElemName {
 object Chat {
   /** (Subject, Thread, Body, Sender) */
   def unapply(msg: MessagePacket) = msg match {
-    case MessageSend(_, "chat", from, _, content) =>
+    case MessageSend(_, Some("chat"), from, _, content) =>
       content.find(_.label=="body").map { body =>
         val subject = content.find(_.label=="subject")
         val thread = content.find(_.label=="thread").map(_.text)
@@ -209,7 +209,7 @@ object Chat {
     val c = parts.foldLeft(NodeSeq.Empty)(_ ++ _)
     MessageSend(
       id=None,
-      messageType="chat",
+      messageType=Some("chat"),
       from=from,
       to=to,
       content=c

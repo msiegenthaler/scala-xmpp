@@ -15,11 +15,11 @@ trait Stanza extends XMPPPacket {
   def fromOption: Option[JID]
   def toOption: Option[JID]
   def idOption: Option[String]
-  def stanzaType: String
+  def stanzaType: Option[String]
   def content: NodeSeq
 }
 trait StanzaError extends Stanza {
-  override val stanzaType = "error"
+  override val stanzaType = Some("error")
   override def isError = true
   def errorElem: Elem
   def errorType: String = errorElem.attribute("type").map(_.toString).getOrElse("")
@@ -81,12 +81,13 @@ sealed trait MessagePacket extends Stanza {
   def from: JID
   override def fromOption = Some(from)
 }
-case class MessageSend(id: Option[String]=None, messageType: String, from: JID, to: JID, content: NodeSeq) extends MessagePacket {
+case class MessageSend(id: Option[String]=None, messageType: Option[String]=None, from: JID, to: JID, content: NodeSeq) extends MessagePacket {
   override def isError = false
   override def stanzaType = messageType
   override def idOption = id
   override def xml = {
-    val m = <message type={messageType} from={from.stringRepresentation} to={to.stringRepresentation}>{content}</message>
+    val m = <message from={from.stringRepresentation} to={to.stringRepresentation}>{content}</message>
+    m.optAttr("type", messageType)
     m.optAttr("id", id)
   }
 }
@@ -111,6 +112,8 @@ sealed trait IQPacket extends Stanza {
   override def idOption = Some(id)
 }
 sealed trait IQRequest extends IQPacket {
+  val iqType: String
+  override final val stanzaType = Some(iqType)
   def resultOk(content: NodeSeq) = {
     IQResult(id, to, from, content)
   }
@@ -118,30 +121,29 @@ sealed trait IQRequest extends IQPacket {
     IQError(id, to, from, error, if (includeRequest) content else NodeSeq.Empty)
   }
   override def xml = {
-    <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
+    <iq type={iqType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
   }
 }
 case class IQGet(id: String, from: JID, to: JID, content: NodeSeq) extends IQRequest {
-  override val stanzaType = "get"
+  override val iqType = "get"
   override def isError = false
 }
 case class IQSet(id: String, from: JID, to: JID, content: NodeSeq) extends IQRequest {
-  override val stanzaType = "set"
+  override val iqType = "set"
   override def isError = false
 }
 sealed trait IQResponse extends IQPacket
 case class IQResult(id: String, from: JID, to: JID, content: NodeSeq) extends IQResponse {
-  override val stanzaType = "result"
+  override val stanzaType = Some("result")
   override def isError = false
   override def xml = {
-    <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
+    <iq type="result" from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
   }
 }
 case class IQError(id: String, from: JID, to: JID, errorElem: Elem, otherContent: NodeSeq=NodeSeq.Empty) extends IQResponse with StanzaError {
-  override val stanzaType = "error"
   override def content = otherContent ++ errorElem
   override def xml = {
-    <iq type={stanzaType} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
+    <iq type={stanzaType.get} from={from.stringRepresentation} to={to.stringRepresentation} id={id}>{content}</iq>
   }
 }
 
@@ -151,7 +153,7 @@ trait PresencePacket extends Stanza {
   def presenceType: Option[String]
 }
 case class Presence(from: JID, content: NodeSeq, presenceType: Option[String]=None, to: Option[JID]=None, id: Option[String]=None) extends PresencePacket {
-  override val stanzaType = "presence"
+  override val stanzaType = Some("presence")
   override def isError = false
   override def fromOption = Some(from)
   override def toOption = to
@@ -217,9 +219,9 @@ object XMPPPacket {
     case <message>{content @ _*}</message> =>
       val to = parseJid(elem \ "@to")
       val from = parseJid(elem \ "@from")
-      val id = elem.attribute("id").map(_.toString)
-      val t = (elem \ "@type").toString
-      if (t == "error") {
+      val id = elem.attribute("id").map(_.text)
+      val t = elem.attribute("type").map(_.text)
+      if (t == Some("error")) {
         elem.child.find(_.label == "error") match {
           case Some(error: Elem) =>
             val others = elem.child.filter(_.label != "error")

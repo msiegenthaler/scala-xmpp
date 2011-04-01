@@ -105,7 +105,7 @@ class XMPPPacketSpec extends Spec with ShouldMatchers {
 
   describe("Message") {
     it("should serialize without id") {
-      val stanza = MessageSend(None, "chat", user1_iPhone, user2, <body>Who are you?</body><subject>Query</subject>)
+      val stanza = MessageSend(None, Some("chat"), user1_iPhone, user2, <body>Who are you?</body><subject>Query</subject>)
       stanza.xml should be(<message type="chat" from="peter@xmpp.inventsoft.ch/iphone" to="marc@xmpp.inventsoft.ch"><body>Who are you?</body><subject>Query</subject></message>)
     }
     it("should parse without id") {
@@ -114,7 +114,7 @@ class XMPPPacketSpec extends Spec with ShouldMatchers {
       stanza match {
         case MessageSend(id, t, from, to, content) =>
           id should be(None)
-          t should be("chat")
+          t should be(Some("chat"))
           from should be(user1_iPhone)
           to should be(user2)
           content(0) should be(<body>Who are you?</body>)
@@ -123,7 +123,7 @@ class XMPPPacketSpec extends Spec with ShouldMatchers {
       }
     }
     it("should serialize with id") {
-      val stanza = MessageSend(Some("1234"), "chat", user1_iPhone, user2, <body>Who are you?</body><subject>Query</subject>)
+      val stanza = MessageSend(Some("1234"), Some("chat"), user1_iPhone, user2, <body>Who are you?</body><subject>Query</subject>)
       n(stanza.xml) should be(n(<message type="chat" from="peter@xmpp.inventsoft.ch/iphone" to="marc@xmpp.inventsoft.ch" id="1234"><body>Who are you?</body><subject>Query</subject></message>))
     }
     it("should parse with id") {
@@ -132,7 +132,25 @@ class XMPPPacketSpec extends Spec with ShouldMatchers {
       stanza match {
         case MessageSend(id, t, from, to, content) =>
           id should be(Some("1234"))
-          t should be("chat")
+          t should be(Some("chat"))
+          from should be(user1_iPhone)
+          to should be(user2)
+          content(0) should be(<body>Who are you?</body>)
+          content(1) should be(<subject>Query</subject>)
+        case _ => fail("unexpected: "+stanza)
+      }
+    }
+    it("should serialize without type") {
+      val stanza = MessageSend(Some("1234"), None, user1_iPhone, user2, <body>Who are you?</body><subject>Query</subject>)
+      n(stanza.xml) should be(n(<message from="peter@xmpp.inventsoft.ch/iphone" to="marc@xmpp.inventsoft.ch" id="1234"><body>Who are you?</body><subject>Query</subject></message>))
+    }
+    it("should parse without type") {
+      val xml = <message id="1234" from="peter@xmpp.inventsoft.ch/iphone" to="marc@xmpp.inventsoft.ch"><body>Who are you?</body><subject>Query</subject></message>
+      val stanza = XMPPPacket(xml)
+      stanza match {
+        case MessageSend(id, t, from, to, content) =>
+          id should be(Some("1234"))
+          t should be(None)
           from should be(user1_iPhone)
           to should be(user2)
           content(0) should be(<body>Who are you?</body>)
