@@ -12,32 +12,49 @@ import Messages._
 /**
  * A agent that has a state
  */
-trait StatefulAgent extends Agent {
+trait StatefulAgent { self: Log =>
   protected type State
-  protected def handleIQ(packet: IQRequest, state: State): IQResponse @process =
+  protected val services: AgentServices
+  protected def handleIQ(packet: IQRequest, state: State): IQResponse @process = {
+    log.debug("Unhandled IQ received from {}", packet.from)
     packet.resultError(StanzaError.badRequest)
-  protected def handleMessage(packet: MessagePacket, state: State) = noop
-  protected def handlePresence(packet: PresencePacket, state: State) = noop
-  protected def handleOther(packet: XMPPPacket, state: State) = noop
+  }
+  protected def handleMessage(packet: MessagePacket, state: State): Unit @process = {
+    log.debug("Unhandled Message received from {}", packet.from)
+    val msg = MessageError(packet.id, services.jid, packet.from, StanzaError.badRequest, packet.content)
+    services.send(msg).receive
+  }
+  protected def handlePresence(packet: PresencePacket, state: State): Unit @process = {
+    log.debug("Unhandled Presence received from {}", packet.from)
+    val msg = PresenceError(services.jid, StanzaError.badRequest, packet.idOption, Some(packet.from), packet.content)
+    services.send(msg).receive
+  }
+  protected def handleOther(packet: XMPPPacket, state: State): Unit @process = {
+    log.debug("Unhandled XMPPPacket received")
+  }
 }
 
 /**
  * Base class for the implementation of stateful agents (based upon a StateServer).
  */
-abstract class StateServerAgent extends StatefulAgent with StateServer {
-  override final def handleIQ(packet: IQRequest) = async(handleIQ(packet, _))
-  override final def handleMessage(packet: MessagePacket) = concurrent(handleMessage(packet, _))
-  override final def handlePresence(packet: PresencePacket) = concurrent(handlePresence(packet, _))
-  override final def handleOther(packet: XMPPPacket) = concurrent(handleOther(packet, _))
+abstract class StateServerAgent extends StateServer with Agent { self: StatefulAgent =>
+  override final def handleIQ(packet: IQRequest) =
+    async(self.handleIQ(packet, _))
+  override final def handleMessage(packet: MessagePacket) =
+    concurrent(self.handleMessage(packet, _))
+  override final def handlePresence(packet: PresencePacket) =
+    concurrent(self.handlePresence(packet, _))
+  override final def handleOther(packet: XMPPPacket) =
+    concurrent(self.handleOther(packet, _))
 
-  override def toString = "StatefulAgent"
+  override def toString = "StateServerAgent"
 }
 
 
 /**
  * Trait for splitting the handleMethods into multiple PartialFunction, each handling a specific request.
  */
-trait HandlerAgent extends StatefulAgent {
+trait HandlerAgent extends StatefulAgent { self: Log =>
   protected override def handleIQ(packet: IQRequest, state: State) = {
     val r = packet match {
       case get: IQGet => handle(_iqGet)(get, state)
@@ -106,14 +123,18 @@ trait ProtectedAgent extends StatefulAgent { self: Log =>
   protected override def handleIQ(packet: IQRequest, state: State) = {
     if (isFriend(packet.from)(state))
       super.handleIQ(packet, state)
-    else
+    else {
+      log.debug("Rejected IQ from {} (not a friend)", packet.from)
       packet.resultError(notAFriendError)
+    }
   }
   protected override def handleMessage(packet: MessagePacket, state: State) = {
     if (isFriend(packet.from)(state)) 
       super.handleMessage(packet, state)
-    else
+    else {
+      log.debug("Rejected Message from {} (not a friend)", packet.from)      
       services.send(MessageError(packet.id, services.jid, packet.from, notAFriendError, packet.content)).receive
+    }
   }
   protected override def handlePresence(packet: PresencePacket, state: State) = {
     if (isFriend(packet.from)(state))
@@ -122,6 +143,7 @@ trait ProtectedAgent extends StatefulAgent { self: Log =>
       case Presence(_, _, Some("subscribe"), _, _) =>
         super.handlePresence(packet, state)
       case _ =>
+        log.debug("Rejected Presence from {} (not a friend)", packet.from)
         val msg = PresenceError(services.jid, notAFriendError, packet.idOption, Some(packet.from), packet.content)
         services.send(msg).receive
     }
@@ -137,7 +159,7 @@ trait ProtectedAgent extends StatefulAgent { self: Log =>
 /**
  * Manages the presence-subscriptions of an agent.
  */
-trait PresenceManager extends HandlerAgent { self: Log =>
+trait PresenceManager extends Agent with HandlerAgent { self: Log =>
   protected val services: AgentServices 
 
   protected override type State <: {
@@ -173,7 +195,9 @@ trait PresenceManager extends HandlerAgent { self: Log =>
       announce(from)
   }
 
-  protected def isFriend(jid: JID)(state: State) = state.friends.find(_ == jid).isDefined
+  protected def isFriend(jid: JID)(state: State) = {
+    state.friends.find(_.isParentOf(jid)).isDefined
+  }
 
   protected def announce: Unit @process = concurrent { state =>
     announce(status(state), state)

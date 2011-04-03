@@ -315,6 +315,7 @@ trait AgentComponent extends XMPPComponent with AgentManager with StateServer {
     val agent = createDomainAgent(this)
     protected def createDomainAgent(services: AgentServices): Agent = {
       new ComponentDiscoveryAgent {
+        override val services = DomainHandler.this
         override type State = Unit
         override def init = ()
           override val manager = AgentComponent.this

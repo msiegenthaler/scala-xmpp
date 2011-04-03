@@ -16,6 +16,11 @@ trait JID extends Ordered[JID] {
   val node: Option[String]
   val domain: String
   val resource: Option[String]
+  def isParentOf(other: JID) = {
+    domain == other.domain && 
+      (if (node.isDefined) node == other.node else true) && 
+      (if (resource.isDefined) resource==other.resource else true)
+  }
   def withoutResource: JID = {
     if (resource.isDefined) {
       JID(node, domain, None)

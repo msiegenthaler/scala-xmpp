@@ -138,5 +138,49 @@ class JIDSpec extends Spec with ShouldMatchers {
         b.compareTo(a) should be > 0 
       }
     }
+    describe("isParentOf") {
+      it("inventsoft.ch should be parent of inventsoft.ch") {
+        assert(JID.parse("inventsoft.ch") isParentOf JID.parse("inventsoft.ch"))
+      }
+      it("ms@inventsoft.ch should be parent of ms@inventsoft.ch") {
+        assert(JID.parse("ms@inventsoft.ch") isParentOf JID.parse("ms@inventsoft.ch"))
+      }
+      it("ms@inventsoft.ch/iPhone should be parent of ms@inventsoft.ch/iPhone") {
+        assert(JID.parse("ms@inventsoft.ch/iPhone") isParentOf JID.parse("ms@inventsoft.ch/iPhone"))
+      }
+      it("ms@inventsoft.ch should be parent of ms@inventsoft.ch/iPhone") {
+        assert(JID.parse("ms@inventsoft.ch") isParentOf JID.parse("ms@inventsoft.ch/iPhone"))
+      }
+      it("inventsoft.ch should be parent of ms@inventsoft.ch") {
+        assert(JID.parse("inventsoft.ch") isParentOf JID.parse("ms@inventsoft.ch"))
+      }
+      it("inventsoft.ch should be parent of ms@inventsoft.ch/iPhone") {
+        assert(JID.parse("inventsoft.ch") isParentOf JID.parse("ms@inventsoft.ch/iPhone"))
+      }
+      it("inventsoft.ch should not be parent of test.inventsoft.ch") {
+        assert(!(JID.parse("inventsoft.ch") isParentOf JID.parse("test.inventsoft.ch")))
+      }
+      it("inventsoft.ch should not be parent of a@test.inventsoft.ch") {
+        assert(!(JID.parse("inventsoft.ch") isParentOf JID.parse("a@test.inventsoft.ch")))
+      }
+      it("ms@inventsoft.ch should not be parent of msi@inventsoft.ch") {
+        assert(!(JID.parse("ms@inventsoft.ch") isParentOf JID.parse("msi@inventsoft.ch")))
+      }
+      it("ms@inventsoft.ch should not be parent of msi@inventsoft.ch/XX") {
+        assert(!(JID.parse("ms@inventsoft.ch") isParentOf JID.parse("msi@inventsoft.ch/XX")))
+      }
+      it("ms@inventsoft.ch/iPhone should not be parent of msi@inventsoft.ch/iPhone4") {
+        assert(!(JID.parse("ms@inventsoft.ch/iPhone") isParentOf JID.parse("ms@inventsoft.ch/iPhone4")))
+      }
+      it("ms@inventsoft.ch/iPhone should not be parent of ms@inventsoft.ch") {
+        assert(!(JID.parse("ms@inventsoft.ch/iPhone") isParentOf JID.parse("ms@inventsoft.ch")))
+      }
+      it("ms@inventsoft.ch/iPhone should not be parent of inventsoft.ch") {
+        assert(!(JID.parse("ms@inventsoft.ch/iPhone") isParentOf JID.parse("inventsoft.ch")))
+      }
+      it("ms@inventsoft.ch should not be parent of inventsoft.ch") {
+        assert(!(JID.parse("ms@inventsoft.ch") isParentOf JID.parse("inventsoft.ch")))
+      }
+    }
   }
 }

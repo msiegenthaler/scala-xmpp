@@ -49,24 +49,27 @@ trait ComponentInfoAgent extends HandlerAgent { self: Log =>
   protected override def message = super.message :+ commands
 
   def commands = mkMsg {
-    case Chat(_, thread, Command("list"), from) =>
+    case (Chat(_, thread, Command("list"), from),state) =>
       log.debug("Agent-listing requested by {}", from)
       val cs = manager.registeredComponents.receiveOption(5 s).getOrElse(Map())
       val parts = cs.map(c => Text(c._1.stringRepresentation))
       val body = parts.mkString("\n")
       services.send(Chat(None, thread, body, from, services.jid)).receive
 
-    case Chat(_, thread, Command("status"), from) =>
+    case (Chat(_, thread, Command("status"), from),state) =>
       log.debug("Status requested by {}", from)
       val body = "Agent "+services.jid+" for component "+services.jid.domain+" (connected to "+services.serverJid+")"
       services.send(Chat(None, thread, body, from, services.jid)).receive
 
-    case Chat(_, thread, Command("help"), from) =>
+    case (Chat(_, thread, Command("help"), from),state) =>
       val commands = ("list", "Lists all registered agents") ::
                      ("status", "Status of the component") ::
                      ("help", "Shows this output") :: Nil
       val body = "Available Commands:\n"+commands.map(c => " "+c._1+": "+c._2).mkString("\n")
       services.send(Chat(None, thread, body, from, services.jid)).receive
+
+    case (Chat(_, thread, content, from),state) =>
+      println("Chat: "+content)
   }
 
   protected object Command {
