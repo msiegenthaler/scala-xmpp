@@ -99,7 +99,7 @@ trait HandlerAgent extends StatefulAgent {
  * Agent that does only allows subscription requests from unknown JIDs, all other commands are blocked and
  * answered with 'subscriptionRequired'.
  */
-trait ProtectedAgent extends StatefulAgent with Log {
+trait ProtectedAgent extends StatefulAgent { self: Log =>
   protected val services: AgentServices
 
   protected def notAFriendError = StanzaError.subscriptionRequired
@@ -127,7 +127,7 @@ trait ProtectedAgent extends StatefulAgent with Log {
     }
   }
   protected override def handleOther(packet: XMPPPacket, state: State) = {
-    //deny all, since we have no way to parse the from-JID
+    //deny all since we have no way to parse the from-JID
     log.info("Ignored other xmpp-packet, no way to authorize")
   }
 
@@ -137,7 +137,7 @@ trait ProtectedAgent extends StatefulAgent with Log {
 /**
  * Manages the presence-subscriptions of an agent.
  */
-trait PresenceManager extends HandlerAgent with Log {
+trait PresenceManager extends HandlerAgent { self: Log =>
   protected val services: AgentServices 
 
   protected override type State <: {
@@ -178,7 +178,7 @@ trait PresenceManager extends HandlerAgent with Log {
   protected def announce: Unit @process = concurrent { state =>
     announce(status(state), state)
   }
-  private[this] def announce(status: Status, state: State) = {
+  private def announce(status: Status, state: State) = {
     val sends = state.friends.map_cps { friend => 
       services.send(Announce(friend, status.presenceType, status.status))
     }

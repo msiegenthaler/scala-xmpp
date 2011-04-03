@@ -99,7 +99,7 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
    * Agent that shows information about the component
    */
   class AboutAgent(override protected val services: AgentServices, override val manager: AgentManager)
-      extends ComponentInfoAgent with PresenceManager with ProtectedAgent {
+      extends StateServerAgent with ComponentInfoAgent with PresenceManager with ProtectedAgent {
     protected case class InfoAgentState(friends: Set[JID])
     protected type State = InfoAgentState
 

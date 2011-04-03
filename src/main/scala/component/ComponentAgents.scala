@@ -42,7 +42,7 @@ abstract class ComponentDiscoveryAgent extends StateServerAgent with HandlerAgen
  *  - status
  *  - help
  */
-abstract class ComponentInfoAgent extends StateServerAgent with HandlerAgent with Log {
+trait ComponentInfoAgent extends HandlerAgent { self: Log =>
   protected val manager: AgentManager
   protected val services: AgentServices
 
