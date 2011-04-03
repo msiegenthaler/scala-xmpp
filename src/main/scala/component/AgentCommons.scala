@@ -9,32 +9,57 @@ import scalabase.oip._
 import scalabase.log._
 import Messages._
 
+/**
+ * A agent that has a state
+ */
+trait StatefulAgent extends Agent {
+  protected type State
+  protected def handleIQ(packet: IQRequest, state: State): IQResponse @process =
+    packet.resultError(StanzaError.badRequest)
+  protected def handleMessage(packet: MessagePacket, state: State) = noop
+  protected def handlePresence(packet: PresencePacket, state: State) = noop
+  protected def handleOther(packet: XMPPPacket, state: State) = noop
+}
 
 /**
  * Base class for the implementation of stateful agents (based upon a StateServer).
  */
-trait StatefulAgent extends Agent with StateServer {
-  override def handleIQ(packet: IQRequest) = async { state =>
-    packet match {
-      case get: IQGet =>
-        val r = handle(_iqGet)(get, state)
-        r.getOrElse_cps(packet.resultError(StanzaError.badRequest))
-      case set: IQSet =>
-        val r = handle(_iqSet)(set, state)
-        r.getOrElse_cps(packet.resultError(StanzaError.badRequest))
+abstract class StateServerAgent extends StatefulAgent with StateServer {
+  override final def handleIQ(packet: IQRequest) = async(handleIQ(packet, _))
+  override final def handleMessage(packet: MessagePacket) = concurrent(handleMessage(packet, _))
+  override final def handlePresence(packet: PresencePacket) = concurrent(handlePresence(packet, _))
+  override final def handleOther(packet: XMPPPacket) = concurrent(handleOther(packet, _))
+
+  override def toString = "StatefulAgent"
+}
+
+
+/**
+ * Trait for splitting the handleMethods into multiple PartialFunction, each handling a specific request.
+ */
+trait HandlerAgent extends StatefulAgent {
+  protected override def handleIQ(packet: IQRequest, state: State) = {
+    val r = packet match {
+      case get: IQGet => handle(_iqGet)(get, state)
+      case set: IQSet => handle(_iqSet)(set, state)
+      case _ => None
     }
+    r.getOrElse_cps(super.handleIQ(packet, state))
   }
-  override def handleMessage(packet: MessagePacket) = concurrent { state =>
-    handleNoResult(_message)(packet, state)
+  protected override def handleMessage(packet: MessagePacket, state: State) = {
+    val r = handleNoResult(_message)(packet, state)
+    r.getOrElse_cps(super.handleMessage(packet, state))
   }
-  override def handlePresence(packet: PresencePacket) = concurrent { state =>
-    handleNoResult(_presence)(packet, state)
+  protected override def handlePresence(packet: PresencePacket, state: State) = {
+    val r = handleNoResult(_presence)(packet, state)
+    r.getOrElse_cps(super.handlePresence(packet, state))
   }
-  override def handleOther(packet: XMPPPacket) = concurrent { state =>
-    handleNoResult(_other)(packet, state)
+  protected override def handleOther(packet: XMPPPacket, state: State) = {
+    val r = handleNoResult(_other)(packet, state)
+    r.getOrElse_cps(super.handleOther(packet, state))
   }
 
-  private def handleNoResult[I](handler: Traversable[Handler[I,Unit]])(value: I, state: State): Option[Unit] @process = {
+  private def handleNoResult[I](handler: Traversable[Handler[I,Unit]])(value: I, state: State) = {
     handle(handler)(value, state)
   }
   private def handle[I,O](handler: Traversable[Handler[I,O]])(value: I, state: State): Option[O] @process = {
@@ -67,14 +92,52 @@ trait StatefulAgent extends Agent with StateServer {
   protected def mkPres(fun: Handler[PresencePacket,Unit]) = fun
   protected def mkOther(fun: Handler[XMPPPacket,Unit]) = fun
   
-  override def toString = "StatefulAgent"
+  override def toString = "HandlerAgent"
 }
 
+/**
+ * Agent that does only allows subscription requests from unknown JIDs, all other commands are blocked and
+ * answered with 'subscriptionRequired'.
+ */
+trait ProtectedAgent extends StatefulAgent with Log {
+  protected val services: AgentServices
+
+  protected def notAFriendError = StanzaError.subscriptionRequired
+  protected override def handleIQ(packet: IQRequest, state: State) = {
+    if (isFriend(packet.from)(state))
+      super.handleIQ(packet, state)
+    else
+      packet.resultError(notAFriendError)
+  }
+  protected override def handleMessage(packet: MessagePacket, state: State) = {
+    if (isFriend(packet.from)(state)) 
+      super.handleMessage(packet, state)
+    else
+      services.send(MessageError(packet.id, services.jid, packet.from, notAFriendError, packet.content)).receive
+  }
+  protected override def handlePresence(packet: PresencePacket, state: State) = {
+    if (isFriend(packet.from)(state))
+      super.handlePresence(packet, state)
+    else packet match {
+      case Presence(_, _, Some("subscribe"), _, _) =>
+        super.handlePresence(packet, state)
+      case _ =>
+        val msg = PresenceError(services.jid, notAFriendError, packet.idOption, Some(packet.from), packet.content)
+        services.send(msg).receive
+    }
+  }
+  protected override def handleOther(packet: XMPPPacket, state: State) = {
+    //deny all, since we have no way to parse the from-JID
+    log.info("Ignored other xmpp-packet, no way to authorize")
+  }
+
+  protected def isFriend(jid: JID)(state: State): Boolean
+}
 
 /**
  * Manages the presence-subscriptions of an agent.
  */
-trait PresenceManager extends StatefulAgent with Log {
+trait PresenceManager extends HandlerAgent with Log {
   protected val services: AgentServices 
 
   protected override type State <: {
@@ -82,6 +145,9 @@ trait PresenceManager extends StatefulAgent with Log {
   }
 
   protected override def presence = super.presence :+ subscribe :+ unsubscribe :+ probe
+
+  protected def atomic(fun: State => State @process): State @process
+  protected def concurrent(fun: State => Any @process): Unit @process
 
   protected val subscribe = mkPres {
     case (Presence(from, content,Some("subscribe"), _, id),state) =>
@@ -106,6 +172,8 @@ trait PresenceManager extends StatefulAgent with Log {
       log.debug("Probe from {}", from)
       announce(from)
   }
+
+  protected def isFriend(jid: JID)(state: State) = state.friends.find(_ == jid).isDefined
 
   protected def announce: Unit @process = concurrent { state =>
     announce(status(state), state)

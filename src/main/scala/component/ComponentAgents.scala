@@ -13,7 +13,7 @@ import Messages._
 /**
  * Agent that answers discovery-IQs about its AgentComponent.
  */
-trait ComponentDiscoveryAgent extends StatefulAgent with Log {
+abstract class ComponentDiscoveryAgent extends StateServerAgent with HandlerAgent with Log {
   protected val manager: AgentManager
 
   protected override def iqGet = super.iqGet :+ discovery
@@ -42,7 +42,7 @@ trait ComponentDiscoveryAgent extends StatefulAgent with Log {
  *  - status
  *  - help
  */
-trait ComponentInfoAgent extends StatefulAgent with Log {
+abstract class ComponentInfoAgent extends StateServerAgent with HandlerAgent with Log {
   protected val manager: AgentManager
   protected val services: AgentServices
 

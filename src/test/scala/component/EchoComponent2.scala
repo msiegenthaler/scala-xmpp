@@ -39,7 +39,8 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
 
 
 
-  class EchoAgent(override protected val services: AgentServices) extends PresenceManager {
+  class EchoAgent(override protected val services: AgentServices) 
+      extends StateServerAgent with PresenceManager with ProtectedAgent {
     protected val name = services.jid.node.getOrElse("")
     protected val jidStore = new JIDStore { override val prefix = services.jid.toString }
 
@@ -98,7 +99,7 @@ object EchoComponent2 extends Application with Log { spawnAndBlock {
    * Agent that shows information about the component
    */
   class AboutAgent(override protected val services: AgentServices, override val manager: AgentManager)
-      extends PresenceManager with ComponentInfoAgent {
+      extends ComponentInfoAgent with PresenceManager with ProtectedAgent {
     protected case class InfoAgentState(friends: Set[JID])
     protected type State = InfoAgentState
 
